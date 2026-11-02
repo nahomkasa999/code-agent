@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeBridge AI — Desktop Local File Sync & Terminal</title>
+
+  <!-- Google Fonts: Montserrat, Plus Jakarta Sans, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- xterm.js styles -->
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- ============================================== -->
+    <!-- LEFT SIDEBAR                                   -->
+    <!-- ============================================== -->
+    <aside class="app-sidebar">
+      <!-- SIDEBAR BRAND -->
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <i data-lucide="code-2" class="icon-lg"></i>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">CodeBridge <span class="badge-ai">AI Sync</span></h1>
+          <p class="brand-subtitle">Local File Alter & Sync</p>
+        </div>
+      </div>
+
+      <!-- ACTIVE PROJECT CARD -->
+      <div class="project-box">
+        <div class="project-box-header">
+          <div class="project-box-title">
+            <i data-lucide="folder-git-2" class="icon-sm text-primary"></i>
+            <span>Active Project</span>
+          </div>
+          <button id="btnBrowseFolder" class="btn btn-secondary btn-sm" title="Change Project Folder">
+            <i data-lucide="folder-search" class="icon-xs"></i>
+            Browse...
+          </button>
+        </div>
+        <div class="project-path-display" id="currentProjectPath" title="Click to reveal in folder">
+          Select project folder...
+        </div>
+        <div class="project-recent-wrapper">
+          <select id="recentProjectsSelect" class="select-recent" title="Recent Projects">
+            <option value="">Recent Projects</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- CORE ACTION BUTTONS (1, 2, 3, 4) -->
+      <div class="sidebar-section-title">Workflow Actions</div>
+      <div class="core-actions-vertical">
+        <!-- BUTTON 1: Create code.txt -->
+        <button id="btnCreateCodeTxt" class="action-btn">
+          <div class="btn-icon">
+            <i data-lucide="file-code-2" class="icon-md"></i>
+          </div>
+          <div class="btn-text-content">
+            <span class="btn-primary-title">1) Create code.txt</span>
+            <span class="btn-secondary-desc" id="codeTxtStatusDesc">Excludes .md, shadcn, node_modules</span>
+          </div>
+        </button>
+
+        <!-- BUTTON 2: Export Changes -->
+        <button id="btnExportChanges" class="action-btn">
+          <div class="btn-icon">
+            <i data-lucide="git-commit-horizontal" class="icon-md"></i>
+          </div>
+          <div class="btn-text-content">
+            <div class="title-with-badge">
+              <span class="btn-primary-title">2) Export Changes</span>
+              <span id="changesCountBadge" class="badge-counter">0</span>
+            </div>
+            <span class="btn-secondary-desc">Since last code.txt</span>
+          </div>
+        </button>
+
+        <!-- BUTTON 3: Project Tree -->
+        <button id="btnGenerateTree" class="action-btn">
+          <div class="btn-icon">
+            <i data-lucide="folder-tree" class="icon-md"></i>
+          </div>
+          <div class="btn-text-content">
+            <span class="btn-primary-title">3) Tree View</span>
+            <span class="btn-secondary-desc">Copy project structure</span>
+          </div>
+        </button>
+
+        <!-- BUTTON 4: Copy AI Prompt -->
+        <button id="btnCopyPrompt" class="action-btn">
+          <div class="btn-icon">
+            <i data-lucide="sparkles" class="icon-md"></i>
+          </div>
+          <div class="btn-text-content">
+            <span class="btn-primary-title">4) Copy AI Prompt</span>
+            <span class="btn-secondary-desc">Instruct AI on format</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- NAVIGATION MENU TABS -->
+      <div class="sidebar-section-title">Navigation</div>
+      <nav class="sidebar-nav">
+        <button class="nav-tab active" data-tab="tab-paste">
+          <i data-lucide="file-edit" class="icon-sm"></i>
+          <span>Paste & Alter Files</span>
+          <span id="tabParsedCount" class="tab-badge" style="display:none">0</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-codetxt">
+          <i data-lucide="file-text" class="icon-sm"></i>
+          <span>code.txt Viewer</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-changes">
+          <i data-lucide="git-diff" class="icon-sm"></i>
+          <span>Changes Diff</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-tree">
+          <i data-lucide="network" class="icon-sm"></i>
+          <span>Directory Tree</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-prompt">
+          <i data-lucide="bot" class="icon-sm"></i>
+          <span>AI Prompt & Settings</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-terminal-full">
+          <i data-lucide="terminal-square" class="icon-sm"></i>
+          <span>Full Terminal</span>
+        </button>
+      </nav>
+
+      <!-- SIDEBAR FOOTER -->
+      <div class="sidebar-footer">
+        <button id="btnToggleTerminal" class="footer-btn active" title="Toggle Integrated Terminal (Ctrl+`)">
+          <i data-lucide="terminal" class="icon-sm"></i>
+          <span>Terminal</span>
+        </button>
+        <button id="btnThemeToggle" class="footer-btn" title="Toggle Dark/Light Mode">
+          <i data-lucide="sun" id="themeIcon" class="icon-sm"></i>
+          <span id="themeText">Theme</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============================================== -->
+    <!-- MAIN WORKSPACE CONTENT                         -->
+    <!-- ============================================== -->
+    <div class="main-viewport">
+      <!-- TOP STATUS / BREADCRUMB BAR -->
+      <div class="top-status-bar">
+        <div class="status-left">
+          <i data-lucide="folder-check" class="icon-sm text-primary"></i>
+          <span class="status-label">Project Root:</span>
+          <span id="breadcrumbPath" class="status-path">No project loaded</span>
+        </div>
+        <div class="status-right">
+          <span class="status-pill" id="statusPillShadcn">
+            <i data-lucide="layers" class="icon-xs"></i>
+            <span id="statusShadcnText">Shadcn UI</span>
+          </span>
+          <span class="status-pill" id="statusPillSnapshot">
+            <i data-lucide="clock" class="icon-xs"></i>
+            <span id="statusSnapshotText">No snapshot</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- TAB 1: PASTE & ALTER FILES -->
+      <main id="tab-paste" class="tab-content active">
+        <div class="paste-workspace">
+          <!-- INPUT PANEL -->
+          <div class="input-panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <h2 class="panel-title">
+                  <i data-lucide="clipboard-copy" class="icon-sm text-primary"></i>
+                  Paste AI Output Here
+                </h2>
+                <span class="panel-hint">Supports delimiters (=== FILE: path ===) or markdown code blocks</span>
+              </div>
+              <div class="panel-tools">
+                <button id="btnAutoFormat" class="btn btn-secondary" title="Auto-detect & format unstructured text into standard file delimiters">
+                  <i data-lucide="wand-2" class="icon-sm text-primary"></i>
+                  Auto-Format & Clean
+                </button>
+                <button id="btnPasteClipboard" class="btn btn-secondary">
+                  <i data-lucide="clipboard-paste" class="icon-sm"></i>
+                  Paste Clipboard
+                </button>
+                <button id="btnClearPaste" class="btn btn-outline">
+                  <i data-lucide="trash-2" class="icon-sm"></i>
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div class="textarea-wrapper">
+              <textarea id="pasteInput" placeholder="Paste your AI code response here...
+Example delimiter format:
+========================================
+FILE:
+    src/app/page.tsx
+========================================
+export default function Page() { ... }
+
+or markdown header:
+### File: `src/app/page.tsx`
+```tsx
+export default function Page() { ... }
+```"></textarea>
+            </div>
+
+            <div class="parse-status-bar">
+              <div id="parseStatusText" class="parse-status-message">
+                <span>Ready for code paste</span>
+              </div>
+              <button id="btnApplyAllFiles" class="btn btn-primary btn-apply-all" disabled>
+                <i data-lucide="check-check" class="icon-md"></i>
+                Apply All Files to Disk (<span id="applyCountNumber">0</span>)
+              </button>
+            </div>
+          </div>
+
+          <!-- DETECTED FILES PREVIEW PANEL -->
+          <div class="files-preview-panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <h2 class="panel-title">
+                  <i data-lucide="files" class="icon-sm text-primary"></i>
+                  Detected Files & Patches (<span id="detectedFilesCount">0</span>)
+                </h2>
+                <span class="panel-hint">Review changes before altering your local files</span>
+              </div>
+            </div>
+
+            <!-- DETECTED COMMANDS CONTAINER -->
+            <div id="detectedCommandsBox" class="commands-box" style="display:none">
+              <div class="commands-box-header">
+                <div class="commands-box-title">
+                  <i data-lucide="terminal" class="icon-sm text-primary"></i>
+                  <span>Detected Commands (<span id="detectedCommandsCount">0</span>)</span>
+                </div>
+                <button id="btnRunAllCommands" class="btn btn-primary btn-sm">
+                  <i data-lucide="play" class="icon-xs"></i>
+                  Run All in Terminal
+                </button>
+              </div>
+              <div id="detectedCommandsList" class="commands-list"></div>
+            </div>
+
+            <div id="parsedFilesList" class="parsed-files-container">
+              <div class="empty-state">
+                <i data-lucide="file-search-2" class="icon-2xl text-muted"></i>
+                <p>No files detected yet</p>
+                <span>Paste code with file headers on the left to alter your local files</span>
+              </div>
+            </div>
+
+            <!-- SESSION HISTORY -->
+            <div class="applied-history-section">
+              <div class="history-header">
+                <span class="history-title">
+                  <i data-lucide="history" class="icon-xs"></i>
+                  Session Applied History
+                </span>
+                <button id="btnClearHistory" class="btn-text-sm">Clear</button>
+              </div>
+              <div id="appliedHistoryList" class="history-list">
+                <div class="history-empty">No files applied in this session yet.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 2: code.txt EXPORT -->
+      <main id="tab-codetxt" class="tab-content">
+        <div class="single-panel-layout">
+          <div class="toolbar-card">
+            <div class="card-left">
+              <h2 class="card-title">
+                <i data-lucide="file-code" class="icon-md text-primary"></i>
+                Full Code Aggregator (code.txt)
+              </h2>
+              <p class="card-desc">Combines all project code into a single file formatted for AI consumption. Excludes markdown, shadcn UI primitives, and node_modules.</p>
+            </div>
+            <div class="card-actions">
+              <button id="btnTriggerCodeTxtGen" class="btn btn-primary">
+                <i data-lucide="refresh-cw" class="icon-sm"></i>
+                Re-generate code.txt
+              </button>
+              <button id="btnCopyCodeTxt" class="btn btn-secondary" disabled>
+                <i data-lucide="copy" class="icon-sm"></i>
+                Copy to Clipboard
+              </button>
+              <button id="btnOpenCodeTxtLocation" class="btn btn-outline" disabled>
+                <i data-lucide="external-link" class="icon-sm"></i>
+                Open in Folder
+              </button>
+            </div>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-box">
+              <span class="stat-label">Files Included</span>
+              <span id="codeTxtStatFiles" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Total Size</span>
+              <span id="codeTxtStatSize" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Characters</span>
+              <span id="codeTxtStatChars" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Estimated Tokens</span>
+              <span id="codeTxtStatTokens" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Snapshot Time</span>
+              <span id="codeTxtStatTime" class="stat-value text-sm">-</span>
+            </div>
+          </div>
+
+          <div class="viewer-container">
+            <div class="viewer-header">
+              <span>code.txt Preview</span>
+              <span id="codeTxtViewerNotice" class="viewer-badge">Generated file</span>
+            </div>
+            <pre id="codeTxtViewer" class="code-preview-block">Click "Create code.txt" to generate project code...</pre>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 3: CHANGES DIFF -->
+      <main id="tab-changes" class="tab-content">
+        <div class="single-panel-layout">
+          <div class="toolbar-card">
+            <div class="card-left">
+              <h2 class="card-title">
+                <i data-lucide="git-pull-request" class="icon-md text-primary"></i>
+                Project Changes Since Last code.txt
+              </h2>
+              <p class="card-desc">Detects all modified and newly created files compared to the baseline snapshot taken when code.txt was generated.</p>
+            </div>
+            <div class="card-actions">
+              <button id="btnRefreshChanges" class="btn btn-primary">
+                <i data-lucide="rotate-ccw" class="icon-sm"></i>
+                Check Changes Now
+              </button>
+              <button id="btnCopyChanges" class="btn btn-secondary" disabled>
+                <i data-lucide="copy" class="icon-sm"></i>
+                Copy changes.txt
+              </button>
+              <button id="btnOpenChangesLocation" class="btn btn-outline" disabled>
+                <i data-lucide="external-link" class="icon-sm"></i>
+                Open in Folder
+              </button>
+            </div>
+          </div>
+
+          <div id="changesSummaryBanner" class="summary-banner neutral">
+            <div class="banner-text">
+              <span id="changesSummaryText" class="banner-title">Click "Check Changes Now" or "Export Changes"</span>
+              <span id="changesSubText" class="banner-desc">Baseline snapshot will be compared against current disk files</span>
+            </div>
+          </div>
+
+          <div class="viewer-container">
+            <div class="viewer-header">
+              <span>changes.txt Content</span>
+              <span id="changesViewerStats" class="viewer-badge">0 files</span>
+            </div>
+            <pre id="changesViewer" class="code-preview-block">No changes generated yet.</pre>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 4: DIRECTORY TREE -->
+      <main id="tab-tree" class="tab-content">
+        <div class="single-panel-layout">
+          <div class="toolbar-card">
+            <div class="card-left">
+              <h2 class="card-title">
+                <i data-lucide="folder-tree" class="icon-md text-primary"></i>
+                Project Directory Tree
+              </h2>
+              <p class="card-desc">Clean ASCII tree representation of your project folder. Filtered to exclude node_modules, .git, and compacts shadcn UI.</p>
+            </div>
+            <div class="card-actions">
+              <button id="btnRefreshTree" class="btn btn-primary">
+                <i data-lucide="refresh-cw" class="icon-sm"></i>
+                Generate Tree
+              </button>
+              <button id="btnCopyTree" class="btn btn-secondary">
+                <i data-lucide="copy" class="icon-sm"></i>
+                Copy Tree to Clipboard
+              </button>
+            </div>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-box">
+              <span class="stat-label">Folders</span>
+              <span id="treeStatFolders" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Files</span>
+              <span id="treeStatFiles" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Detected Shadcn</span>
+              <span id="treeStatShadcn" class="stat-value text-sm">-</span>
+            </div>
+          </div>
+
+          <div class="viewer-container">
+            <div class="viewer-header">
+              <span>Directory Tree</span>
+              <span class="viewer-badge">ASCII Tree</span>
+            </div>
+            <pre id="treeViewer" class="code-preview-block">Click "Generate Tree" to inspect directory tree...</pre>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 5: AI PROMPT & SETTINGS -->
+      <main id="tab-prompt" class="tab-content">
+        <div class="single-panel-layout">
+          <div class="toolbar-card">
+            <div class="card-left">
+              <h2 class="card-title">
+                <i data-lucide="sparkle" class="icon-md text-primary"></i>
+                AI System Prompt Instructions
+              </h2>
+              <p class="card-desc">Copy this prompt and send it to your AI (Claude, ChatGPT, Gemini, DeepSeek, etc.) so it always formats code exactly as this app expects.</p>
+            </div>
+            <div class="card-actions">
+              <button id="btnCopyPromptInTab" class="btn btn-primary">
+                <i data-lucide="copy" class="icon-sm"></i>
+                Copy Prompt to Clipboard
+              </button>
+            </div>
+          </div>
+
+          <div class="prompt-customizer-card">
+            <div class="card-subtitle">Prompt Format Preset</div>
+            <div class="format-options">
+              <label class="radio-label">
+                <input type="radio" name="promptFormat" value="delimiter" checked>
+                <span>Full File Delimiter (Recommended)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="promptFormat" value="patch">
+                <span>Search & Replace Patch Format</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="promptFormat" value="markdown">
+                <span>Markdown Header Format</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="viewer-container">
+            <div class="viewer-header">
+              <span>Prompt Content Preview</span>
+              <span class="viewer-badge">System Prompt</span>
+            </div>
+            <pre id="promptViewer" class="code-preview-block"></pre>
+          </div>
+
+          <!-- EXCLUSION SETTINGS -->
+          <div class="settings-card">
+            <h3 class="settings-title">
+              <i data-lucide="filter" class="icon-sm text-primary"></i>
+              Exclusion & Ignore Settings
+            </h3>
+            <p class="settings-desc">Configure what files and folders are excluded when creating <code>code.txt</code> and tracking changes:</p>
+            <div class="settings-checkboxes">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkIgnoreMd" checked>
+                <span>Exclude Markdown files (<code>*.md</code>, <code>*.mdx</code>)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkIgnoreShadcn" checked>
+                <span>Exclude Shadcn UI primitives (automatically detects <code>components.json</code>)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkIgnoreNodeModules" checked>
+                <span>Exclude <code>node_modules</code> and build outputs (<code>.next</code>, <code>dist</code>, <code>.git</code>)</span>
+              </label>
+            </div>
+            <div class="custom-ignore-field">
+              <label for="txtCustomIgnore">Custom Ignored Patterns (comma or newline separated):</label>
+              <input type="text" id="txtCustomIgnore" placeholder="e.g. docs/, tests/, .env.local">
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 6: FULL TERMINAL VIEW -->
+      <main id="tab-terminal-full" class="tab-content">
+        <div class="single-panel-layout" style="height:100%;padding:24px;">
+          <div id="fullTerminalContainer" class="full-term-box"></div>
+        </div>
+      </main>
+
+      <!-- INTEGRATED BOTTOM TERMINAL DRAWER -->
+      <div id="terminalDrawer" class="terminal-drawer">
+        <div id="terminalResizer" class="terminal-resizer"></div>
+        <div class="terminal-header">
+          <div class="terminal-title-group">
+            <i data-lucide="terminal" class="icon-sm text-primary"></i>
+            <span class="terminal-title">Terminal</span>
+            <span id="terminalCwdBadge" class="terminal-cwd-badge">~</span>
+          </div>
+          <div class="terminal-controls">
+            <button id="btnTermDev" class="terminal-quick-btn" title="Run npm run dev">
+              <i data-lucide="play" class="icon-xs"></i>
+              npm run dev
+            </button>
+            <button id="btnTermGit" class="terminal-quick-btn" title="Run git status">
+              <i data-lucide="git-branch" class="icon-xs"></i>
+              git status
+            </button>
+            <button id="btnTermClear" class="terminal-quick-btn" title="Clear terminal">
+              <i data-lucide="trash" class="icon-xs"></i>
+              clear
+            </button>
+            <button id="btnTermRestart" class="terminal-quick-btn" title="Restart shell session">
+              <i data-lucide="rotate-cw" class="icon-xs"></i>
+              restart
+            </button>
+            <button id="btnMinimizeTerminal" class="terminal-icon-btn" title="Minimize / Toggle Terminal">
+              <i data-lucide="minus" class="icon-sm"></i>
+            </button>
+          </div>
+        </div>
+        <div id="bottomTerminalContainer" class="terminal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <!-- VENDOR SCRIPTS -->
+  <script src="vendor/lucide.min.js"></script>
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

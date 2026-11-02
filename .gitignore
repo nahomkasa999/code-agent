@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+.codebridge/
+code.txt
+changes.txt
+.DS_Store
+*.log
