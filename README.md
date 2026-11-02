@@ -62,6 +62,22 @@
 
 ---
 
+### 5. Error Diagnostic & AI Fix Assistant
+- **Automatic Error Capture**: When a patch or file alteration fails (e.g. search block mismatch or syntax error), CodeBridge generates an instant error report with the exact failed block and lines.
+- **Copy Error Fix Prompt**: 1-click button creates a targeted prompt for the AI including:
+  - The exact error description
+  - The failed search block
+  - The current contents of the target file directly from disk
+  - Strict instruction for the AI to fix ONLY that targeted issue.
+- **Dedicated Fix & Patch Input ("Merge Fix into Original")**:
+  - Paste the AI's fix patch into the dedicated Fix Input.
+  - **Apply Fix to Disk**: Immediately updates and patches the file on your local disk.
+  - **Merge Fix into Original Pasted**: Updates your original pasted text so the original code in your workspace now has the error resolved!
+  - **Apply to Disk & Merge Both**: Executes both in one click.
+- **Terminal Error Extraction**: Click **"Fix Error"** in the terminal drawer to instantly extract compiler logs (TypeScript, Next.js, Webpack) and auto-load the affected file into the Fix Assistant.
+
+---
+
 ## How to Run
 
 ```bash

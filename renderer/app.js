@@ -21,7 +21,10 @@ const state = {
   currentTree: null,
   promptPreset: 'delimiter',
   terminalOpen: true,
-  terminalHeight: 260
+  terminalHeight: 260,
+  applyErrors: [],
+  selectedErrorFile: null,
+  terminalOutputHistory: ''
 };
 
 // Terminal Instance
@@ -124,6 +127,36 @@ const elements = {
   btnTermClear: document.getElementById('btnTermClear'),
   btnTermRestart: document.getElementById('btnTermRestart'),
   btnMinimizeTerminal: document.getElementById('btnMinimizeTerminal'),
+  btnTermSendError: document.getElementById('btnTermSendError'),
+
+  // Error Assistant & Quick Fix
+  tabErrorBadge: document.getElementById('tabErrorBadge'),
+  pasteErrorAlertCard: document.getElementById('pasteErrorAlertCard'),
+  pasteErrorCount: document.getElementById('pasteErrorCount'),
+  pasteErrorList: document.getElementById('pasteErrorList'),
+  btnCopyQuickErrorPrompt: document.getElementById('btnCopyQuickErrorPrompt'),
+  btnOpenFullErrorTab: document.getElementById('btnOpenFullErrorTab'),
+  btnDismissQuickError: document.getElementById('btnDismissQuickError'),
+  quickFixInput: document.getElementById('quickFixInput'),
+  btnQuickApplyFixDisk: document.getElementById('btnQuickApplyFixDisk'),
+  btnQuickMergeFixOriginal: document.getElementById('btnQuickMergeFixOriginal'),
+  btnQuickApplyAndMerge: document.getElementById('btnQuickApplyAndMerge'),
+
+  // Dedicated Error & Fix Tab
+  btnCopyFullErrorPrompt: document.getElementById('btnCopyFullErrorPrompt'),
+  btnLoadFromTerminal: document.getElementById('btnLoadFromTerminal'),
+  btnClearErrorFixer: document.getElementById('btnClearErrorFixer'),
+  errorTargetFileSelect: document.getElementById('errorTargetFileSelect'),
+  errorDiagnosticText: document.getElementById('errorDiagnosticText'),
+  diskFileStatusLabel: document.getElementById('diskFileStatusLabel'),
+  errorCurrentFilePreview: document.getElementById('errorCurrentFilePreview'),
+  btnFormatAssistantFix: document.getElementById('btnFormatAssistantFix'),
+  fixAssistantInput: document.getElementById('fixAssistantInput'),
+  btnAssistantApplyDisk: document.getElementById('btnAssistantApplyDisk'),
+  btnAssistantMergeOriginal: document.getElementById('btnAssistantMergeOriginal'),
+  btnAssistantApplyBoth: document.getElementById('btnAssistantApplyBoth'),
+  assistantStatusBanner: document.getElementById('assistantStatusBanner'),
+  assistantStatusText: document.getElementById('assistantStatusText'),
 
   // Toast
   toast: document.getElementById('toast')
@@ -285,6 +318,7 @@ function initTerminal() {
 
   window.api.terminal.onData((incoming) => {
     term.write(incoming);
+    state.terminalOutputHistory = (state.terminalOutputHistory + incoming).slice(-15000);
   });
 
   window.api.terminal.onExit((code) => {
@@ -865,6 +899,7 @@ async function applyFiles(filesToApply) {
 
     if (result.success) {
       showToast(`Successfully applied ${result.appliedCount} file/patch(es) to disk!`, 'success');
+      clearApplyErrors();
 
       // Add to session history
       result.results.forEach(item => {
@@ -888,7 +923,23 @@ async function applyFiles(filesToApply) {
       // Refresh changes badge immediately
       await checkPendingChanges();
     } else {
-      showToast(`Applied ${result.appliedCount}/${filesToApply.length} items. Check console for errors.`, 'error');
+      const failed = (result.errors && result.errors.length > 0) ? result.errors : (result.results ? result.results.filter(r => !r.success) : []);
+      showToast(`Applied ${result.appliedCount}/${filesToApply.length} items. ${failed.length} error(s) occurred.`, 'error');
+
+      // Record any successful ones into session history
+      if (result.results) {
+        result.results.filter(r => r.success).forEach(item => {
+          state.appliedHistory.unshift({
+            path: item.path,
+            action: item.action,
+            timestamp: item.timestamp,
+            lines: item.newLines
+          });
+        });
+        renderAppliedHistory();
+      }
+
+      handleApplyErrors(failed);
     }
   } catch (err) {
     console.error('Apply error:', err);
@@ -1265,6 +1316,461 @@ function switchTab(targetTabId) {
 }
 
 // ==========================================
+// ERROR DIAGNOSTIC & FIX ASSISTANT LOGIC
+// ==========================================
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function clearApplyErrors() {
+  state.applyErrors = [];
+  if (elements.tabErrorBadge) {
+    elements.tabErrorBadge.style.display = 'none';
+  }
+  if (elements.pasteErrorAlertCard) {
+    elements.pasteErrorAlertCard.style.display = 'none';
+  }
+  if (elements.pasteErrorList) {
+    elements.pasteErrorList.innerHTML = '';
+  }
+}
+
+function handleApplyErrors(errors) {
+  if (!errors || errors.length === 0) {
+    clearApplyErrors();
+    return;
+  }
+
+  state.applyErrors = errors;
+
+  if (elements.tabErrorBadge) {
+    elements.tabErrorBadge.textContent = errors.length;
+    elements.tabErrorBadge.style.display = 'inline-block';
+  }
+
+  if (elements.pasteErrorCount) {
+    elements.pasteErrorCount.textContent = errors.length;
+  }
+
+  if (elements.pasteErrorAlertCard) {
+    elements.pasteErrorAlertCard.style.display = 'flex';
+  }
+
+  if (elements.pasteErrorList) {
+    elements.pasteErrorList.innerHTML = errors.map((err, idx) => `
+      <div class="error-alert-item">
+        <div class="error-item-top">
+          <span class="error-item-path">${escapeHtml(err.path || 'Unknown')}</span>
+          <button class="btn-destructive-outline open-fix-btn" data-index="${idx}">
+            <i data-lucide="wrench" class="icon-xs"></i>
+            <span>Fix in Assistant</span>
+          </button>
+        </div>
+        <div class="error-item-reason">${escapeHtml(err.error || 'Failed to apply changes')}</div>
+        ${err.failedBlock ? `<div class="error-item-snippet">Search block not found:\n${escapeHtml(err.failedBlock.slice(0, 200))}${err.failedBlock.length > 200 ? '...' : ''}</div>` : ''}
+      </div>
+    `).join('');
+
+    elements.pasteErrorList.querySelectorAll('.open-fix-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+        const err = state.applyErrors[idx];
+        if (err) openErrorFixAssistant(err);
+      });
+    });
+  }
+
+  updateErrorTargetFileSelect();
+  if (errors.length > 0) {
+    selectErrorTargetFile(errors[0].path);
+  }
+  refreshIcons();
+}
+
+function updateErrorTargetFileSelect() {
+  const select = elements.errorTargetFileSelect;
+  if (!select) return;
+
+  const files = new Set();
+  state.applyErrors.forEach(e => files.add(e.path));
+  state.parsedFiles.forEach(f => files.add(f.path));
+
+  select.innerHTML = '';
+  if (files.size === 0) {
+    select.innerHTML = '<option value="">No files available</option>';
+    return;
+  }
+
+  files.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    const isErr = state.applyErrors.some(e => e.path === p);
+    opt.textContent = (isErr ? '⚠ ' : '') + p;
+    select.appendChild(opt);
+  });
+}
+
+async function selectErrorTargetFile(filePath) {
+  if (!filePath) return;
+  state.selectedErrorFile = filePath;
+  if (elements.errorTargetFileSelect) {
+    elements.errorTargetFileSelect.value = filePath;
+  }
+
+  const err = state.applyErrors.find(e => e.path === filePath);
+  if (err && elements.errorDiagnosticText) {
+    let diag = `File: ${err.path}\nError: ${err.error || 'Apply failed'}\n`;
+    if (err.failedBlock) {
+      diag += `\nFailed Search Block:\n<<<<<<<\n${err.failedBlock}\n>>>>>>>\n`;
+    }
+    elements.errorDiagnosticText.value = diag;
+  }
+
+  if (state.projectDir && elements.errorCurrentFilePreview) {
+    try {
+      const diskContent = await window.api.readFile(state.projectDir, filePath);
+      if (diskContent !== null) {
+        elements.errorCurrentFilePreview.textContent = diskContent;
+        if (elements.diskFileStatusLabel) {
+          const lines = diskContent.split('\n').length;
+          elements.diskFileStatusLabel.textContent = `On Disk (${lines} lines, ${diskContent.length} chars)`;
+        }
+      } else {
+        elements.errorCurrentFilePreview.textContent = '// File does not exist on disk yet (New file)';
+        if (elements.diskFileStatusLabel) {
+          elements.diskFileStatusLabel.textContent = 'File not on disk';
+        }
+      }
+    } catch (e) {
+      elements.errorCurrentFilePreview.textContent = '// Error reading file: ' + e.message;
+    }
+  }
+}
+
+function openErrorFixAssistant(errorItem) {
+  switchTab('tab-error-fix');
+  if (errorItem && errorItem.path) {
+    selectErrorTargetFile(errorItem.path);
+  }
+}
+
+async function copyErrorFixPrompt(targetPath) {
+  const filePath = targetPath || state.selectedErrorFile || (state.applyErrors[0] ? state.applyErrors[0].path : null);
+  if (!filePath) {
+    showToast('No target file selected to generate fix prompt.', 'error');
+    return;
+  }
+
+  const err = state.applyErrors.find(e => e.path === filePath) || {
+    error: elements.errorDiagnosticText ? elements.errorDiagnosticText.value.trim() : 'Error applying patch'
+  };
+
+  let diskContent = '';
+  if (state.projectDir) {
+    try {
+      diskContent = await window.api.readFile(state.projectDir, filePath);
+    } catch (e) {}
+  }
+
+  const prompt = generateErrorFixPrompt(filePath, err, diskContent);
+  await window.api.writeClipboard(prompt);
+  showToast(`Copied AI fix prompt for ${filePath} to clipboard!`, 'success');
+}
+
+function generateErrorFixPrompt(targetPath, errorInfo, fileContent) {
+  let prompt = `# CODEBRIDGE ERROR FIX REQUEST\n\n`;
+  prompt += `I encountered an error trying to apply changes to my project. Please fix ONLY this error.\n\n`;
+  prompt += `========================================\n`;
+  prompt += `TARGET FILE: ${targetPath}\n`;
+  prompt += `========================================\n`;
+  prompt += `ERROR DETAILS:\n`;
+  prompt += `${errorInfo?.error || 'Failed to patch file'}\n`;
+  if (errorInfo?.failedBlock) {
+    prompt += `\nFAILED SEARCH BLOCK (NOT FOUND IN CURRENT FILE):\n<<<<<<<\n${errorInfo.failedBlock}\n>>>>>>>\n`;
+  }
+  prompt += `\n========================================\n`;
+  prompt += `CURRENT FILE CONTENT ON DISK:\n`;
+  prompt += `========================================\n`;
+  prompt += (fileContent || '// [File is currently new or empty]').trimEnd() + '\n';
+  prompt += `\n========================================\n`;
+  prompt += `STRICT INSTRUCTIONS FOR AI:\n`;
+  prompt += `1. Fix ONLY the targeted issue in "${targetPath}".\n`;
+  prompt += `2. Inspect the current file content above to ensure your SEARCH block matches the exact whitespace, comments, and lines.\n`;
+  prompt += `3. Return ONLY a CodeBridge SEARCH/REPLACE block or full file delimiter block:\n\n`;
+  prompt += `========================================\n`;
+  prompt += `FILE:\n    ${targetPath}\n`;
+  prompt += `========================================\n`;
+  prompt += `<<<<<<< SEARCH\n[exact existing lines from current file]\n=======\n[replacement lines with the fix]\n>>>>>>> REPLACE\n`;
+
+  return prompt;
+}
+
+function applySearchReplace(original, patch) {
+  const srRegex = /<{5,}\s*(?:SEARCH|ORIGINAL)?\s*\r?\n([\s\S]*?)\r?\n={5,}\s*\r?\n([\s\S]*?)\r?\n>{5,}\s*(?:REPLACE|UPDATED)?/gi;
+  let matches = [];
+  let m;
+  while ((m = srRegex.exec(patch)) !== null) {
+    matches.push({ search: m[1], replace: m[2] });
+  }
+  if (matches.length === 0) return null;
+
+  let current = original;
+  for (const item of matches) {
+    if (current.includes(item.search)) {
+      current = current.replace(item.search, item.replace);
+    } else {
+      const normCurrent = current.replace(/\r\n/g, '\n');
+      const normSearch = item.search.replace(/\r\n/g, '\n');
+      const normReplace = item.replace.replace(/\r\n/g, '\n');
+      if (normCurrent.includes(normSearch)) {
+        current = normCurrent.replace(normSearch, normReplace);
+      } else {
+        return null;
+      }
+    }
+  }
+  return current;
+}
+
+async function applyFixToDiskAction(targetPath, fixText) {
+  if (!state.projectDir) {
+    showToast('Please select a project directory first!', 'error');
+    return false;
+  }
+  if (!targetPath) {
+    showToast('No target file selected.', 'error');
+    return false;
+  }
+  if (!fixText || !fixText.trim()) {
+    showToast('Please paste the AI fix / patch first!', 'error');
+    return false;
+  }
+
+  const parsed = parseCodeInput(fixText);
+  let fileToApply = null;
+
+  if (parsed.length > 0) {
+    const item = parsed.find(f => f.path === targetPath) || parsed[0];
+    fileToApply = {
+      path: targetPath || item.path,
+      content: item.content,
+      isPatch: item.isPatch,
+      patchType: item.patchType
+    };
+  } else {
+    const isPatch = fixText.includes('<<<<<<<') || (fixText.includes('@@') && fixText.includes('+++ '));
+    fileToApply = {
+      path: targetPath,
+      content: fixText.trim() + '\n',
+      isPatch
+    };
+  }
+
+  try {
+    const result = await window.api.applyFiles(state.projectDir, [fileToApply]);
+    if (result.success) {
+      showToast(`✓ Fix applied successfully to ${targetPath}!`, 'success');
+      if (result.results && result.results[0]) {
+        state.appliedHistory.unshift({
+          path: targetPath,
+          action: result.results[0].action,
+          timestamp: new Date().toLocaleTimeString(),
+          lines: result.results[0].newLines
+        });
+        renderAppliedHistory();
+      }
+
+      removeApplyError(targetPath);
+      await selectErrorTargetFile(targetPath);
+      await checkPendingChanges();
+
+      if (elements.assistantStatusBanner) {
+        elements.assistantStatusBanner.className = 'assistant-status-banner success';
+        elements.assistantStatusText.textContent = `✓ Fix applied to disk: ${targetPath}`;
+      }
+      return true;
+    } else {
+      const err = result.errors && result.errors[0] ? result.errors[0].error : 'Failed to apply fix to disk';
+      showToast(`Failed: ${err}`, 'error');
+      if (elements.assistantStatusBanner) {
+        elements.assistantStatusBanner.className = 'assistant-status-banner error';
+        elements.assistantStatusText.textContent = `Error applying fix: ${err}`;
+      }
+      return false;
+    }
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+    return false;
+  }
+}
+
+function mergeFixIntoOriginal(targetPath, fixText) {
+  if (!fixText || !fixText.trim()) {
+    showToast('Please paste the AI fix / patch first!', 'error');
+    return false;
+  }
+
+  if (!targetPath) {
+    const parsed = parseCodeInput(fixText);
+    if (parsed.length > 0) {
+      targetPath = parsed[0].path;
+    } else if (state.selectedErrorFile) {
+      targetPath = state.selectedErrorFile;
+    } else if (state.applyErrors.length > 0) {
+      targetPath = state.applyErrors[0].path;
+    } else {
+      showToast('Could not determine target file for merge.', 'error');
+      return false;
+    }
+  }
+
+  let rawPaste = elements.pasteInput.value;
+  if (!rawPaste || !rawPaste.trim()) {
+    elements.pasteInput.value = fixText.trim() + '\n';
+    handlePasteInputChange();
+    showToast('Set fix into paste input!', 'success');
+    return true;
+  }
+
+  const isSearchReplace = fixText.includes('<<<<<<<');
+
+  // Case 1: Standard Delimiter Blocks in pasteInput
+  const delimHeaderRegex = new RegExp(`(={5,}\\s*\\r?\\n(?:FILE:\\s*)?(?:[ \\t]*\\r?\\n)?${escapeRegex(targetPath)}\\s*\\r?\\n={5,}\\s*\\r?\\n)([\\s\\S]*?)(?=(?:={5,}\\s*\\r?\\n(?:FILE:\\s*)?(?:[ \\t]*\\r?\\n)?[^\\r\\n=]+?\\s*\\r?\\n={5,})|$)`, 'i');
+  const delimMatch = rawPaste.match(delimHeaderRegex);
+
+  if (delimMatch) {
+    const header = delimMatch[1];
+    const existingBody = delimMatch[2];
+    let newBody = '';
+
+    if (isSearchReplace) {
+      const patched = applySearchReplace(existingBody, fixText);
+      if (patched !== null) {
+        newBody = patched;
+      } else {
+        newBody = existingBody;
+      }
+    } else {
+      const parsedFix = parseCodeInput(fixText);
+      if (parsedFix.length > 0 && parsedFix[0].content) {
+        newBody = parsedFix[0].content;
+      } else {
+        newBody = fixText.trim() + '\n';
+      }
+    }
+
+    if (newBody && newBody !== existingBody) {
+      elements.pasteInput.value = rawPaste.replace(delimHeaderRegex, `${header}${newBody.trimEnd()}\n\n`);
+      handlePasteInputChange();
+      showToast(`Merged fix for ${targetPath} into original pasted code!`, 'success');
+      return true;
+    }
+  }
+
+  // Case 2: Markdown headers in pasteInput
+  const mdHeaderRegex = new RegExp(`((?:###?|####|\\*\\*)\\s*(?:File:\\s*|FILE:\\s*)?\`?${escapeRegex(targetPath)}\`?\\s*\\r?\\n(?:[^\\n]*\\n)?\`\`\`[a-zA-Z0-9_-]*\\r?\\n)([\\s\\S]*?)(\`\`\`)`, 'i');
+  const mdMatch = rawPaste.match(mdHeaderRegex);
+
+  if (mdMatch) {
+    const mdHeader = mdMatch[1];
+    const existingBody = mdMatch[2];
+    const mdFooter = mdMatch[3];
+    let newBody = '';
+
+    if (isSearchReplace) {
+      const patched = applySearchReplace(existingBody, fixText);
+      if (patched !== null) newBody = patched;
+    } else {
+      const parsedFix = parseCodeInput(fixText);
+      if (parsedFix.length > 0 && parsedFix[0].content) {
+        newBody = parsedFix[0].content;
+      } else {
+        newBody = fixText.trim() + '\n';
+      }
+    }
+
+    if (newBody) {
+      elements.pasteInput.value = rawPaste.replace(mdHeaderRegex, `${mdHeader}${newBody.trimEnd()}\n${mdFooter}`);
+      handlePasteInputChange();
+      showToast(`Merged fix for ${targetPath} into original pasted code!`, 'success');
+      return true;
+    }
+  }
+
+  // Case 3: Raw single file patch
+  if (isSearchReplace) {
+    const patched = applySearchReplace(rawPaste, fixText);
+    if (patched !== null) {
+      elements.pasteInput.value = patched;
+      handlePasteInputChange();
+      showToast(`Applied search/replace patch directly to original pasted code!`, 'success');
+      return true;
+    }
+  }
+
+  // Case 4: Append standard delimiter block
+  const cleanFix = autoFormatPastedText(fixText);
+  elements.pasteInput.value = (rawPaste.trim() + '\n\n' + cleanFix.trim() + '\n').trimStart();
+  handlePasteInputChange();
+  showToast(`Appended fix for ${targetPath} to original pasted code!`, 'success');
+  return true;
+}
+
+async function applyFixAndMergeBothAction(targetPath, fixText) {
+  const diskSuccess = await applyFixToDiskAction(targetPath, fixText);
+  const mergeSuccess = mergeFixIntoOriginal(targetPath, fixText);
+
+  if (diskSuccess && mergeSuccess) {
+    showToast(`✓ Fix applied to disk & merged into original pasted code!`, 'success');
+    if (elements.assistantStatusBanner) {
+      elements.assistantStatusBanner.className = 'assistant-status-banner success';
+      elements.assistantStatusText.textContent = `✓ Fixed on disk & merged into original pasted code!`;
+    }
+  }
+}
+
+function removeApplyError(targetPath) {
+  state.applyErrors = state.applyErrors.filter(e => e.path !== targetPath);
+  if (state.applyErrors.length === 0) {
+    clearApplyErrors();
+    if (elements.assistantStatusBanner) {
+      elements.assistantStatusBanner.className = 'assistant-status-banner success';
+      elements.assistantStatusText.textContent = `✓ All errors resolved! Files up-to-date.`;
+    }
+  } else {
+    handleApplyErrors(state.applyErrors);
+  }
+}
+
+function loadErrorFromTerminal() {
+  const rawLog = state.terminalOutputHistory || '';
+  if (!rawLog.trim()) {
+    showToast('No terminal output recorded yet. Run a command or trigger an error first.', 'info');
+    return;
+  }
+
+  const cleanLog = rawLog.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\r/g, '');
+  const lines = cleanLog.split('\n').filter(l => l.trim());
+  const recentLines = lines.slice(-40).join('\n');
+
+  if (elements.errorDiagnosticText) {
+    elements.errorDiagnosticText.value = recentLines;
+  }
+
+  const pathMatch = recentLines.match(/(?:[a-zA-Z0-9_\-\.\/]+\/)?([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]{1,6})(?::\d+)?/);
+  if (pathMatch) {
+    let candidate = pathMatch[1].replace(/^[.\/]+/, '');
+    if (candidate.includes('.') && !candidate.endsWith('.js') && !candidate.endsWith('.lock')) {
+      selectErrorTargetFile(candidate);
+    }
+  }
+
+  switchTab('tab-error-fix');
+  showToast('Loaded recent terminal output into Error Assistant!', 'info');
+}
+
+// ==========================================
 // EVENT BINDINGS
 // ==========================================
 function bindEvents() {
@@ -1459,6 +1965,101 @@ function bindEvents() {
   elements.chkIgnoreShadcn.addEventListener('change', saveSettings);
   elements.chkIgnoreNodeModules.addEventListener('change', saveSettings);
   elements.txtCustomIgnore.addEventListener('change', saveSettings);
+
+  // Quick Error Alert Card Listeners
+  if (elements.btnCopyQuickErrorPrompt) {
+    elements.btnCopyQuickErrorPrompt.addEventListener('click', () => {
+      copyErrorFixPrompt(state.applyErrors[0]?.path);
+    });
+  }
+
+  if (elements.btnOpenFullErrorTab) {
+    elements.btnOpenFullErrorTab.addEventListener('click', () => {
+      openErrorFixAssistant(state.applyErrors[0]);
+    });
+  }
+
+  if (elements.btnDismissQuickError) {
+    elements.btnDismissQuickError.addEventListener('click', clearApplyErrors);
+  }
+
+  if (elements.btnQuickApplyFixDisk) {
+    elements.btnQuickApplyFixDisk.addEventListener('click', () => {
+      const target = state.applyErrors[0]?.path || state.selectedErrorFile;
+      applyFixToDiskAction(target, elements.quickFixInput.value);
+    });
+  }
+
+  if (elements.btnQuickMergeFixOriginal) {
+    elements.btnQuickMergeFixOriginal.addEventListener('click', () => {
+      const target = state.applyErrors[0]?.path || state.selectedErrorFile;
+      mergeFixIntoOriginal(target, elements.quickFixInput.value);
+    });
+  }
+
+  if (elements.btnQuickApplyAndMerge) {
+    elements.btnQuickApplyAndMerge.addEventListener('click', () => {
+      const target = state.applyErrors[0]?.path || state.selectedErrorFile;
+      applyFixAndMergeBothAction(target, elements.quickFixInput.value);
+    });
+  }
+
+  // Dedicated Error & Fix Tab Listeners
+  if (elements.btnCopyFullErrorPrompt) {
+    elements.btnCopyFullErrorPrompt.addEventListener('click', () => {
+      copyErrorFixPrompt(state.selectedErrorFile);
+    });
+  }
+
+  if (elements.btnLoadFromTerminal) {
+    elements.btnLoadFromTerminal.addEventListener('click', loadErrorFromTerminal);
+  }
+
+  if (elements.btnTermSendError) {
+    elements.btnTermSendError.addEventListener('click', loadErrorFromTerminal);
+  }
+
+  if (elements.btnClearErrorFixer) {
+    elements.btnClearErrorFixer.addEventListener('click', () => {
+      elements.errorDiagnosticText.value = '';
+      elements.fixAssistantInput.value = '';
+      if (elements.assistantStatusBanner) {
+        elements.assistantStatusBanner.className = 'assistant-status-banner neutral';
+        elements.assistantStatusText.textContent = 'Cleared inputs. Ready for new error or fix.';
+      }
+    });
+  }
+
+  if (elements.errorTargetFileSelect) {
+    elements.errorTargetFileSelect.addEventListener('change', (e) => {
+      selectErrorTargetFile(e.target.value);
+    });
+  }
+
+  if (elements.btnFormatAssistantFix) {
+    elements.btnFormatAssistantFix.addEventListener('click', () => {
+      elements.fixAssistantInput.value = autoFormatPastedText(elements.fixAssistantInput.value);
+      showToast('Auto-formatted fix output!', 'info');
+    });
+  }
+
+  if (elements.btnAssistantApplyDisk) {
+    elements.btnAssistantApplyDisk.addEventListener('click', () => {
+      applyFixToDiskAction(state.selectedErrorFile, elements.fixAssistantInput.value);
+    });
+  }
+
+  if (elements.btnAssistantMergeOriginal) {
+    elements.btnAssistantMergeOriginal.addEventListener('click', () => {
+      mergeFixIntoOriginal(state.selectedErrorFile, elements.fixAssistantInput.value);
+    });
+  }
+
+  if (elements.btnAssistantApplyBoth) {
+    elements.btnAssistantApplyBoth.addEventListener('click', () => {
+      applyFixAndMergeBothAction(state.selectedErrorFile, elements.fixAssistantInput.value);
+    });
+  }
 }
 
 // Start app

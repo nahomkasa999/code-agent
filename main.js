@@ -747,7 +747,12 @@ function applyPatchContent(original, patchText) {
         if (normCurrent.includes(normSearch)) {
           current = normCurrent.replace(normSearch, normReplace);
         } else {
-          return { success: false, error: 'Search block not found in original file' };
+          return {
+            success: false,
+            error: 'Search block not found in target file on disk',
+            failedBlock: m.search,
+            expectedReplace: m.replace
+          };
         }
       }
     }
@@ -760,7 +765,11 @@ function applyPatchContent(original, patchText) {
     if (res !== false && typeof res === 'string') {
       return { success: true, content: res, method: 'unified-diff' };
     } else {
-      return { success: false, error: 'Unified diff could not be cleanly applied' };
+      return {
+        success: false,
+        error: 'Unified diff could not be cleanly applied to existing file',
+        failedPatch: patchText
+      };
     }
   }
 
@@ -826,7 +835,8 @@ ipcMain.handle('project:applyFiles', async (event, projectDir, files) => {
           results.push({
             path: cleanRelPath,
             success: false,
-            error: 'Cannot patch: File does not exist on disk yet. Full file content is required for new files.'
+            error: 'Cannot patch: File does not exist on disk yet. Full file content is required for new files.',
+            originalContent: ''
           });
           continue;
         }
@@ -839,7 +849,11 @@ ipcMain.handle('project:applyFiles', async (event, projectDir, files) => {
           results.push({
             path: cleanRelPath,
             success: false,
-            error: patchResult.error || 'Failed to apply patch to file'
+            error: patchResult.error || 'Failed to apply patch to file',
+            failedBlock: patchResult.failedBlock || null,
+            expectedReplace: patchResult.expectedReplace || null,
+            failedPatch: patchResult.failedPatch || item.content,
+            originalContent: originalContent ? originalContent.slice(0, 10000) : ''
           });
           continue;
         }
@@ -862,14 +876,18 @@ ipcMain.handle('project:applyFiles', async (event, projectDir, files) => {
       results.push({
         path: cleanRelPath,
         success: false,
-        error: err.message
+        error: err.message,
+        originalContent: originalContent ? originalContent.slice(0, 10000) : ''
       });
     }
   }
 
+  const errors = results.filter(r => !r.success);
   return {
-    success: results.every(r => r.success),
+    success: errors.length === 0,
     appliedCount: results.filter(r => r.success).length,
+    errorCount: errors.length,
+    errors,
     results
   };
 });

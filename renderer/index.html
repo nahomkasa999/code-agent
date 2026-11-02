@@ -128,6 +128,11 @@
           <i data-lucide="bot" class="icon-sm"></i>
           <span>AI Prompt & Settings</span>
         </button>
+        <button class="nav-tab" data-tab="tab-error-fix" id="navTabErrorFix">
+          <i data-lucide="shield-alert" class="icon-sm"></i>
+          <span>Fix & Error Assistant</span>
+          <span id="tabErrorBadge" class="tab-badge error-badge" style="display:none">0</span>
+        </button>
         <button class="nav-tab" data-tab="tab-terminal-full">
           <i data-lucide="terminal-square" class="icon-sm"></i>
           <span>Full Terminal</span>
@@ -235,6 +240,49 @@ export default function Page() { ... }
                   Detected Files & Patches (<span id="detectedFilesCount">0</span>)
                 </h2>
                 <span class="panel-hint">Review changes before altering your local files</span>
+              </div>
+            </div>
+
+            <!-- ERROR ALERT & QUICK-FIX CARD -->
+            <div id="pasteErrorAlertCard" class="error-alert-card" style="display:none">
+              <div class="error-alert-header">
+                <div class="error-alert-title">
+                  <i data-lucide="alert-triangle" class="icon-sm text-destructive"></i>
+                  <span>Errors Encountered (<span id="pasteErrorCount">0</span> failed)</span>
+                </div>
+                <div class="error-alert-actions">
+                  <button id="btnCopyQuickErrorPrompt" class="btn btn-sm btn-destructive-outline" title="Copy targeted AI prompt to fix only these errors">
+                    <i data-lucide="sparkles" class="icon-xs"></i>
+                    Copy Error Prompt for AI
+                  </button>
+                  <button id="btnOpenFullErrorTab" class="btn btn-sm btn-secondary" title="Open full Error & Fix Assistant tab">
+                    <i data-lucide="external-link" class="icon-xs"></i>
+                    Open Assistant
+                  </button>
+                  <button id="btnDismissQuickError" class="btn-text-sm" title="Dismiss error alert">Dismiss</button>
+                </div>
+              </div>
+              <div id="pasteErrorList" class="error-alert-list"></div>
+              <div class="quick-fix-input-group">
+                <div class="quick-fix-label">
+                  <i data-lucide="wrench" class="icon-xs text-primary"></i>
+                  <span>Paste AI Fix / Patch to resolve and repair:</span>
+                </div>
+                <textarea id="quickFixInput" class="quick-fix-textarea" placeholder="Paste the AI's fix patch or corrected file here..."></textarea>
+                <div class="quick-fix-button-row">
+                  <button id="btnQuickApplyFixDisk" class="btn btn-sm btn-secondary">
+                    <i data-lucide="hard-drive-download" class="icon-xs"></i>
+                    Apply Fix to Disk
+                  </button>
+                  <button id="btnQuickMergeFixOriginal" class="btn btn-sm btn-accent">
+                    <i data-lucide="git-merge" class="icon-xs"></i>
+                    Merge into Original Pasted
+                  </button>
+                  <button id="btnQuickApplyAndMerge" class="btn btn-sm btn-primary">
+                    <i data-lucide="zap" class="icon-xs"></i>
+                    Apply to Disk & Merge Both
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -504,7 +552,140 @@ export default function Page() { ... }
         </div>
       </main>
 
-      <!-- TAB 6: FULL TERMINAL VIEW -->
+      <!-- TAB 6: ERROR & FIX ASSISTANT -->
+      <main id="tab-error-fix" class="tab-content">
+        <div class="assistant-layout">
+          <!-- TOP TOOLBAR -->
+          <div class="toolbar-card">
+            <div class="card-left">
+              <h2 class="card-title">
+                <i data-lucide="shield-alert" class="icon-md text-destructive"></i>
+                AI Error Diagnostic & Patch Fix Assistant
+              </h2>
+              <p class="card-desc">
+                When code alterations, patches, or terminal commands fail, generate a targeted prompt for your AI with full disk context, and paste the AI patch here to repair both disk files and your original pasted code.
+              </p>
+            </div>
+            <div class="card-actions">
+              <button id="btnCopyFullErrorPrompt" class="btn btn-primary" title="Copy complete error prompt with file context to clipboard">
+                <i data-lucide="sparkles" class="icon-sm"></i>
+                Copy Error Fix Prompt for AI
+              </button>
+              <button id="btnLoadFromTerminal" class="btn btn-secondary" title="Import recent error lines from terminal output">
+                <i data-lucide="terminal" class="icon-sm"></i>
+                Pull from Terminal
+              </button>
+              <button id="btnClearErrorFixer" class="btn btn-outline">
+                <i data-lucide="trash-2" class="icon-sm"></i>
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- 2-COLUMN WORKSPACE -->
+          <div class="assistant-columns">
+            <!-- COLUMN 1: ERROR DIAGNOSTIC & CONTEXT -->
+            <div class="assistant-col">
+              <div class="panel-header">
+                <div class="panel-title-group">
+                  <h3 class="panel-title">
+                    <i data-lucide="bug" class="icon-sm text-destructive"></i>
+                    1. Error Output & Target Context
+                  </h3>
+                  <span class="panel-hint">Select the failing file and inspect error details</span>
+                </div>
+              </div>
+              <div class="assistant-col-body">
+                <div class="form-group">
+                  <label class="form-label" for="errorTargetFileSelect">Target Project File:</label>
+                  <select id="errorTargetFileSelect" class="select-recent"></select>
+                </div>
+
+                <div class="form-group flex-col-grow">
+                  <label class="form-label" for="errorDiagnosticText">Error Log / Failed Patch Output:</label>
+                  <textarea id="errorDiagnosticText" class="assistant-textarea error-log" placeholder="Error output will appear here automatically when a patch or file application fails. You can also paste compiler errors, stack traces, or terminal logs here..."></textarea>
+                </div>
+
+                <div class="form-group flex-col-grow">
+                  <div class="label-with-meta">
+                    <label class="form-label">Current File on Disk (Context for AI):</label>
+                    <span id="diskFileStatusLabel" class="form-meta-text">Loaded from disk</span>
+                  </div>
+                  <pre id="errorCurrentFilePreview" class="assistant-file-preview">Select a file to preview current disk content...</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLUMN 2: FIX / PATCH INPUT & MERGE -->
+            <div class="assistant-col">
+              <div class="panel-header">
+                <div class="panel-title-group">
+                  <h3 class="panel-title">
+                    <i data-lucide="wrench" class="icon-sm text-primary"></i>
+                    2. Paste AI Fix Patch
+                  </h3>
+                  <span class="panel-hint">Paste the AI's fix to patch disk and original pasted code</span>
+                </div>
+                <div class="panel-tools">
+                  <button id="btnFormatAssistantFix" class="btn btn-sm btn-secondary" title="Format fix delimiters">
+                    <i data-lucide="wand-2" class="icon-xs"></i>
+                    Auto-Format
+                  </button>
+                </div>
+              </div>
+              <div class="assistant-col-body">
+                <div class="form-group flex-col-grow">
+                  <label class="form-label" for="fixAssistantInput">AI Patch / Corrected Code:</label>
+                  <textarea id="fixAssistantInput" class="assistant-textarea patch-input" placeholder="Paste the AI fix response here...
+Supports:
+1) Search & Replace patch:
+<<<<<<< SEARCH
+old code
+=======
+fixed code
+>>>>>>> REPLACE
+
+2) Full corrected file in delimiter or markdown block:
+========================================
+FILE:
+    src/app/page.tsx
+========================================
+... corrected code ..."></textarea>
+                </div>
+
+                <!-- ACTION BUTTONS FOR RESOLVING -->
+                <div class="assistant-resolution-box">
+                  <div class="resolution-title">
+                    <i data-lucide="zap" class="icon-xs text-primary"></i>
+                    Choose Resolution Action:
+                  </div>
+                  <div class="resolution-actions-grid">
+                    <button id="btnAssistantApplyDisk" class="btn btn-secondary">
+                      <i data-lucide="hard-drive-download" class="icon-sm"></i>
+                      <span>Apply Fix to Disk</span>
+                    </button>
+                    <button id="btnAssistantMergeOriginal" class="btn btn-accent">
+                      <i data-lucide="git-merge" class="icon-sm"></i>
+                      <span>Merge into Original Pasted</span>
+                    </button>
+                    <button id="btnAssistantApplyBoth" class="btn btn-primary btn-full-span">
+                      <i data-lucide="check-check" class="icon-md"></i>
+                      <span>Apply to Disk & Merge into Original (Both)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="assistantStatusBanner" class="assistant-status-banner neutral">
+                  <i data-lucide="info" class="icon-sm"></i>
+                  <span id="assistantStatusText">Ready to diagnose and fix errors</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- TAB 7: FULL TERMINAL VIEW -->
       <main id="tab-terminal-full" class="tab-content">
         <div class="single-panel-layout" style="height:100%;padding:24px;">
           <div id="fullTerminalContainer" class="full-term-box"></div>
@@ -536,6 +717,10 @@ export default function Page() { ... }
             <button id="btnTermRestart" class="terminal-quick-btn" title="Restart shell session">
               <i data-lucide="rotate-cw" class="icon-xs"></i>
               restart
+            </button>
+            <button id="btnTermSendError" class="terminal-quick-btn text-destructive" title="Send recent terminal error to Fix Assistant">
+              <i data-lucide="alert-triangle" class="icon-xs"></i>
+              Fix Error
             </button>
             <button id="btnMinimizeTerminal" class="terminal-icon-btn" title="Minimize / Toggle Terminal">
               <i data-lucide="minus" class="icon-sm"></i>
