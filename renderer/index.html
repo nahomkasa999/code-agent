@@ -59,13 +59,13 @@
       <!-- CORE ACTION BUTTONS (1, 2, 3, 4) -->
       <div class="sidebar-section-title">Workflow Actions</div>
       <div class="core-actions-vertical">
-        <!-- BUTTON 1: Create code.txt -->
+        <!-- BUTTON 1: Copy code.txt -->
         <button id="btnCreateCodeTxt" class="action-btn">
           <div class="btn-icon">
             <i data-lucide="file-code-2" class="icon-md"></i>
           </div>
           <div class="btn-text-content">
-            <span class="btn-primary-title">1) Create code.txt</span>
+            <span class="btn-primary-title">1) Copy code.txt</span>
             <span class="btn-secondary-desc" id="codeTxtStatusDesc">Excludes .md, shadcn, node_modules</span>
           </div>
         </button>
@@ -341,12 +341,12 @@ export default function Page() { ... }
                 <i data-lucide="file-code" class="icon-md text-primary"></i>
                 Full Code Aggregator (code.txt)
               </h2>
-              <p class="card-desc">Combines all project code into a single file formatted for AI consumption. Excludes markdown, shadcn UI primitives, and node_modules.</p>
+              <p class="card-desc">Combines all project code and copies directly to clipboard for AI consumption without creating files on disk.</p>
             </div>
             <div class="card-actions">
               <button id="btnTriggerCodeTxtGen" class="btn btn-primary">
                 <i data-lucide="refresh-cw" class="icon-sm"></i>
-                Re-generate code.txt
+                Re-generate & Copy
               </button>
               <button id="btnCopyCodeTxt" class="btn btn-secondary" disabled>
                 <i data-lucide="copy" class="icon-sm"></i>
@@ -354,7 +354,7 @@ export default function Page() { ... }
               </button>
               <button id="btnOpenCodeTxtLocation" class="btn btn-outline" disabled>
                 <i data-lucide="external-link" class="icon-sm"></i>
-                Open in Folder
+                Open Snapshot Folder
               </button>
             </div>
           </div>
@@ -387,7 +387,7 @@ export default function Page() { ... }
               <span>code.txt Preview</span>
               <span id="codeTxtViewerNotice" class="viewer-badge">Generated file</span>
             </div>
-            <pre id="codeTxtViewer" class="code-preview-block">Click "Create code.txt" to generate project code...</pre>
+            <pre id="codeTxtViewer" class="code-preview-block">Click "Copy code.txt" to copy project code to clipboard...</pre>
           </div>
         </div>
       </main>

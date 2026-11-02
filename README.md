@@ -55,7 +55,7 @@
 ---
 
 ### 4. The 4 Workflow Actions
-1. **Create `code.txt`**: Aggregates all project code into `code.txt` (excluding `.md` files, Shadcn UI primitives, and `node_modules`) and saves a baseline snapshot.
+1. **Copy `code.txt`**: Aggregates all project code and copies directly to your clipboard (excluding `.md` files, Shadcn UI primitives, and `node_modules`) while saving a baseline snapshot without creating files on disk.
 2. **Export Changes**: Compares codebase against the baseline snapshot, exports only modified/new files to `changes.txt`, and copies directly to clipboard.
 3. **Tree View**: Generates a clean ASCII tree (compacting Shadcn UI primitives) and copies it to clipboard.
 4. **Copy AI Prompt**: Copies a system prompt instructing any AI how to format full files, patches, and commands for CodeBridge.

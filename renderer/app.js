@@ -1012,12 +1012,16 @@ async function generateCodeTxt() {
   try {
     elements.btnCreateCodeTxt.style.opacity = '0.6';
     elements.btnTriggerCodeTxtGen.disabled = true;
-    elements.btnTriggerCodeTxtGen.textContent = 'Generating...';
+    elements.btnTriggerCodeTxtGen.textContent = 'Copying...';
 
     const options = getIgnoreOptions();
     const result = await window.api.generateCodeTxt(state.projectDir, options);
 
     state.currentCodeTxt = result;
+
+    if (result.content) {
+      await window.api.writeClipboard(result.content);
+    }
 
     // Update UI Stats
     elements.codeTxtStatFiles.textContent = result.fileCount;
@@ -1026,8 +1030,8 @@ async function generateCodeTxt() {
     elements.codeTxtStatTokens.textContent = `~${result.tokenEstimate.toLocaleString()}`;
     elements.codeTxtStatTime.textContent = new Date(result.timestamp).toLocaleTimeString();
 
-    elements.codeTxtViewer.textContent = result.preview + '\n\n... (Full code.txt saved in project root)';
-    elements.codeTxtViewerNotice.textContent = `${result.fileCount} files (${formatBytes(result.sizeBytes)})`;
+    elements.codeTxtViewer.textContent = result.preview + '\n\n... (Full code copied to clipboard!)';
+    elements.codeTxtViewerNotice.textContent = `${result.fileCount} files (${formatBytes(result.sizeBytes)}) — Copied to clipboard`;
 
     elements.btnCopyCodeTxt.disabled = false;
     elements.btnOpenCodeTxtLocation.disabled = false;
@@ -1041,16 +1045,16 @@ async function generateCodeTxt() {
     elements.changesCountBadge.textContent = '0';
     elements.changesCountBadge.className = 'badge-counter';
 
-    showToast(`code.txt created! ${result.fileCount} files (${formatBytes(result.sizeBytes)})`, 'success');
+    showToast(`Code copied to clipboard! ${result.fileCount} files (${formatBytes(result.sizeBytes)})`, 'success');
   } catch (err) {
-    console.error('code.txt generation error:', err);
-    showToast('Failed to generate code.txt: ' + err.message, 'error');
+    console.error('code copy error:', err);
+    showToast('Failed to copy project code: ' + err.message, 'error');
   } finally {
     elements.btnCreateCodeTxt.style.opacity = '1';
     elements.btnTriggerCodeTxtGen.disabled = false;
     elements.btnTriggerCodeTxtGen.innerHTML = `
       <i data-lucide="refresh-cw" class="icon-sm"></i>
-      Re-generate code.txt
+      Re-generate & Copy
     `;
     refreshIcons();
   }
@@ -1130,7 +1134,7 @@ async function exportChanges(autoSwitchTab = true) {
       await window.api.writeClipboard(result.changesText);
       showToast(`Changes loaded & copied to clipboard! (${result.totalChanges} files)`, 'success');
     } else {
-      showToast('No changes detected since last code.txt was generated.', 'info');
+      showToast('No changes detected since baseline snapshot was generated.', 'info');
     }
 
     if (autoSwitchTab) {
@@ -1185,7 +1189,7 @@ function renderChangesTree() {
     elements.changesDiffViewer.innerHTML = `
       <div class="diff-empty-state">
         <i data-lucide="check-circle-2" class="icon-2xl text-primary"></i>
-        <p>All files are in sync with code.txt baseline!</p>
+        <p>All files are in sync with baseline snapshot!</p>
       </div>
     `;
     elements.diffActiveFilePath.textContent = 'All clean (0 changes)';
@@ -1441,7 +1445,7 @@ async function revertAllChanges() {
   }
 
   const count = state.currentChanges.totalChanges;
-  const confirmRevert = confirm(`⚠️ Are you sure you want to REVERT ALL ${count} changed files back to baseline snapshot?\n\nAll modified files will be restored from code.txt and new files will be removed.`);
+  const confirmRevert = confirm(`⚠️ Are you sure you want to REVERT ALL ${count} changed files back to baseline snapshot?\n\nAll modified files will be restored from baseline snapshot and new files will be removed.`);
   if (!confirmRevert) return;
 
   try {
@@ -1596,98 +1600,165 @@ async function generateTree(autoSwitchTab = true) {
 // BUTTON 4: COPY AI SYSTEM PROMPT
 // ==========================================
 function getAIPromptText() {
-  if (state.promptPreset === 'patch') {
+  if (state.promptPreset === 'markdown') {
     return `[SYSTEM DIRECTIVE — AUTOMATED TOOL COMPATIBILITY MODE]
-CRITICAL INSTRUCTION: You are operating in headless code-generation mode for the local developer tool "CodeBridge AI". Your response will be piped directly into an automated AST & regex parser. Any conversational text, pleasantries, or deviation from the protocol below will break the parser and damage local files.
+CRITICAL INSTRUCTION: You are generating code for the automated local file tool "CodeBridge AI". Your response will be parsed directly by an automated AST and regex parser into local filesystem files.
 
 MANDATORY RULES:
-1. ABSOLUTELY ZERO CONVERSATIONAL BANTER. Do not say "Sure", "Here is the code", "I updated...", or "Hope this helps". Start your response IMMEDIATELY with the first delimiter block.
-2. YOU ARE STRICTLY FORBIDDEN FROM TRUNCATING CODE. Never use placeholders like "// ... rest of code unchanged ...".
-3. FOR FILE MODIFICATIONS — USE SEARCH & REPLACE PATCH BLOCKS:
-Every file edit MUST use this exact format:
+1. ZERO CONVERSATIONAL BANTER:
+   Do not introduce your answer. Do not say "Sure!", "Here is the code", or summarize your changes at the end. Output the code blocks IMMEDIATELY.
+2. ZERO CODE TRUNCATION:
+   Placeholders like "// ... existing imports unchanged", "// ... rest of code stays the same", or "/* ... */" are STRICTLY FORBIDDEN. Write 100% complete files.
+3. OUTPUT FORMAT:
+   Each file MUST begin with a Markdown H3 header specifying the exact relative path in backticks, followed by the code block:
+
+### File: \`src/app/page.tsx\`
+\`\`\`tsx
+import React from 'react';
+
+export default function Page() {
+  return <main>Hello World</main>;
+}
+\`\`\`
+
+4. TERMINAL COMMANDS:
+   Place all executable bash commands in an isolated bash code block:
+\`\`\`bash
+npm install <package-name>
+\`\`\`
+
+5. RELATIVE PATHS ONLY:
+   Always use exact relative paths from the project root (e.g., \`src/components/ui/button.tsx\`). Never use absolute paths.`;
+  }
+
+  // Comprehensive Hybrid / Patch & Delimiter Format (Default & Recommended)
+  return `[SYSTEM DIRECTIVE — AUTOMATED TOOL COMPATIBILITY MODE]
+CRITICAL INSTRUCTION: You are operating in headless code-generation mode for the local developer tool "CodeBridge AI". Your response will be parsed directly by an automated parser and applied to local disk files. Any conversational text, pleasantries, incomplete snippets, or syntax deviations will break the parser and damage files.
+
+MANDATORY RULES OF ENGAGEMENT:
+1. ABSOLUTELY ZERO CONVERSATIONAL BANTER:
+   Never say "Sure!", "Here is the patch", "I updated the files", or add explanations after the code. Start your output IMMEDIATELY with the very first delimiter block.
+2. ZERO CODE TRUNCATION:
+   Never write "// ... existing code unchanged ...", "// ... rest of component ...", or omit lines. Truncating code will corrupt the project on disk.
+3. RELATIVE PATHS ONLY:
+   Always specify exact relative paths from the project root (e.g., \`src/app/page.tsx\`, \`src/lib/utils.ts\`). Never use absolute paths.
+
+==================================================
+WHEN TO USE PATCHES VS FULL FILES:
+==================================================
+- FOR EXISTING FILES WITH EDITS: Use SEARCH/REPLACE patch blocks. This preserves untouched code, avoids token waste, and prevents accidental truncation.
+- FOR NEW FILES (NOT YET ON DISK): Output the 100% complete file content directly under the FILE delimiter.
+- FOR MAJOR REFACTORS (>60% of file changed): Output the 100% complete file content.
+
+==================================================
+SEARCH / REPLACE PATCH SPECIFICATION:
+==================================================
+For editing existing files, use this exact delimiter format:
 
 ========================================
 FILE:
-    relative/path/to/file.ext
+    relative/path/to/existing-file.ext
 ========================================
 <<<<<<< SEARCH
-[Exact lines from the existing file to be replaced]
+[Exact lines currently on disk to be replaced]
 =======
 [New replacement lines]
 >>>>>>> REPLACE
 
-4. FOR NEW FILES (NOT YET ON DISK):
-Output the 100% complete content:
+CRITICAL PATCHING RULES (EXACT STRING MATCHING):
+1. EXACT VERBATIM MATCH:
+   The text in the SEARCH block must match the existing file on disk character-for-character, including whitespace, indentation (spaces or tabs), quotes, commas, and line endings.
+2. ANCHOR CONTEXT (3–5 SURROUNDING LINES):
+   Never provide a 1-line SEARCH block like "return false;". Always include 2 to 3 lines of unchanged surrounding code before and after the edit so the match is completely unique and unambiguous in the file.
+3. MULTIPLE BLOCKS PER FILE:
+   You can chain multiple SEARCH/REPLACE blocks under a single FILE header in the sequential order they appear in the file.
+4. TO ADD NEW CODE:
+   Include the adjacent existing lines in SEARCH, and in REPLACE include those same adjacent lines plus your new additions.
+5. TO DELETE CODE:
+   Include the lines you want to remove inside SEARCH along with surrounding anchor lines, and in REPLACE include only the surrounding anchor lines (omitting the deleted lines).
 
+==================================================
+CONCRETE EXAMPLES:
+==================================================
+
+### Example 1: Updating logic inside a function (Surgical edit with anchors)
 ========================================
 FILE:
-    relative/path/to/new-file.ext
+    src/utils/calc.ts
 ========================================
-<FULL_UNTRUNCATED_CONTENT>
+<<<<<<< SEARCH
+export function calculateTotal(items: CartItem[]): number {
+  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+  return subtotal;
+}
+=======
+export function calculateTotal(items: CartItem[]): number {
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const tax = subtotal * 0.15;
+  return subtotal + tax;
+}
+>>>>>>> REPLACE
 
-5. FOR TERMINAL COMMANDS (Dependencies, migrations, scripts):
-Isolate all bash commands into clean code blocks:
-\`\`\`bash
-npm install <package-name>
-\`\`\`
-
-6. ALWAYS USE EXACT RELATIVE PATHS from project root (e.g. \`src/app/page.tsx\`). Never use absolute paths.
-
-Execute strictly according to these directives.`;
-  }
-
-  if (state.promptPreset === 'markdown') {
-    return `[SYSTEM DIRECTIVE — AUTOMATED TOOL COMPATIBILITY MODE]
-CRITICAL INSTRUCTION: You are generating code for the automated local file tool "CodeBridge AI". Your output is parsed by a machine. Do not output any conversational introductions, summaries, or pleasantries.
-
-MANDATORY RULES:
-1. ZERO CHATTER: Do not introduce your answer. Output code blocks immediately.
-2. FULL UNTRUNCATED CODE ONLY: Comments such as "// ... existing imports remain the same" or "// ... rest of code unchanged" are STRICTLY PROHIBITED.
-3. OUTPUT FORMAT:
-Each file MUST be preceded by a Markdown header specifying the relative file path in backticks, followed by the code block:
-
-### File: \`relative/path/to/file.ext\`
-\`\`\`language
-<COMPLETE_FILE_CONTENT>
-\`\`\`
-
-4. TERMINAL COMMANDS:
-Any commands that must be run in the terminal must be in an isolated bash block:
-\`\`\`bash
-npm install <package-name>
-\`\`\`
-
-5. Always use relative paths from the project root.`;
-  }
-
-  // Default: Full File Delimiter Format
-  return `[SYSTEM DIRECTIVE — AUTOMATED TOOL COMPATIBILITY MODE]
-CRITICAL INSTRUCTION: You are operating as an automated code writer for the desktop tool "CodeBridge AI". Your output is fed directly into a local filesystem writer. ANY CONVERSATIONAL TEXT, COMMENTARY, OR TRUNCATION WILL CORRUPT THE SYSTEM PIPELINE.
-
-MANDATORY COMPLIANCE DIRECTIVES:
-1. ABSOLUTELY NO CONVERSATIONAL TEXT. Never output "Sure!", "Here are your files", "Let me know if you need anything else", or post-code explanations. Output ONLY the file blocks.
-2. STRICTLY FORBIDDEN: NEVER TRUNCATE CODE. Writing comments such as "// ... rest of code stays the same", "// ... existing code ...", or "/* unchanged */" will corrupt files on disk. You MUST output 100% of the complete file content from line 1 to the end.
-3. EXACT DELIMITER BLOCK FORMAT: Every file MUST be enclosed in this exact delimiter header:
-
+### Example 2: Adding an import AND a new hook (Multiple patch blocks in one file)
 ========================================
 FILE:
-    relative/path/to/file.ext
+    src/components/Header.tsx
 ========================================
-<COMPLETE_UNTRUNCATED_FILE_CONTENT>
+<<<<<<< SEARCH
+import React from 'react';
+import { Button } from '@/components/ui/button';
+=======
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+export function Header() {
+  return (
+    <header className="site-header">
+=======
+export function Header() {
+  const router = useRouter();
 
-4. TERMINAL COMMANDS (Installing packages, dev servers, migrations):
-Place all executable commands in a clean bash code block:
+  return (
+    <header className="site-header">
+>>>>>>> REPLACE
+
+### Example 3: Deleting an obsolete block of code
+========================================
+FILE:
+    src/lib/config.ts
+========================================
+<<<<<<< SEARCH
+export const API_VERSION = 'v1';
+export const LEGACY_AUTH_ENDPOINT = 'https://old-auth.example.com';
+export const BASE_URL = 'https://api.example.com';
+=======
+export const API_VERSION = 'v1';
+export const BASE_URL = 'https://api.example.com';
+>>>>>>> REPLACE
+
+### Example 4: Creating a brand new file (Full untruncated content)
+========================================
+FILE:
+    src/types/auth.ts
+========================================
+export interface UserSession {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  createdAt: string;
+}
+
+export type AuthState = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
+
+### Example 5: Executable Terminal Commands
 \`\`\`bash
-npm install <package-name>
+npm install lucide-react
+npm run dev
 \`\`\`
 
-5. RELATIVE PATHS:
-Always use exact relative paths from the project root (e.g., \`src/app/page.tsx\`, \`src/lib/utils.ts\`).
-
-6. MULTIPLE FILES:
-You can provide multiple files in a single response by repeating the delimiter block for each file.
-
-Follow these instructions without exception or deviation.`;
+EXECUTE STRICTLY ACCORDING TO THESE DIRECTIVES.`;
 }
 
 function updatePromptPreview() {
@@ -1939,12 +2010,13 @@ function generateErrorFixPrompt(targetPath, errorInfo, fileContent) {
   prompt += `\n========================================\n`;
   prompt += `STRICT INSTRUCTIONS FOR AI:\n`;
   prompt += `1. Fix ONLY the targeted issue in "${targetPath}".\n`;
-  prompt += `2. Inspect the current file content above to ensure your SEARCH block matches the exact whitespace, comments, and lines.\n`;
-  prompt += `3. Return ONLY a CodeBridge SEARCH/REPLACE block or full file delimiter block:\n\n`;
+  prompt += `2. Inspect the current file content above to ensure your SEARCH block matches the exact whitespace, indentation, comments, and lines character-for-character.\n`;
+  prompt += `3. Always include 2 to 3 unchanged anchor lines before and after the change so the SEARCH block matches uniquely without ambiguity.\n`;
+  prompt += `4. Return ONLY a CodeBridge SEARCH/REPLACE block (or full file delimiter block if creating a new file):\n\n`;
   prompt += `========================================\n`;
   prompt += `FILE:\n    ${targetPath}\n`;
   prompt += `========================================\n`;
-  prompt += `<<<<<<< SEARCH\n[exact existing lines from current file]\n=======\n[replacement lines with the fix]\n>>>>>>> REPLACE\n`;
+  prompt += `<<<<<<< SEARCH\n[exact existing lines from current file with 2-3 anchor lines]\n=======\n[replacement lines with the fix]\n>>>>>>> REPLACE\n`;
 
   return prompt;
 }
@@ -2366,17 +2438,35 @@ function bindEvents() {
 
   elements.btnCopyCodeTxt.addEventListener('click', async () => {
     if (state.projectDir) {
-      const content = await window.api.readFile(state.projectDir, 'code.txt');
+      if (state.currentCodeTxt && state.currentCodeTxt.content) {
+        await window.api.writeClipboard(state.currentCodeTxt.content);
+        showToast('Code copied to clipboard!', 'success');
+        return;
+      }
+      let content = await window.api.readFile(state.projectDir, '.codebridge/baseline.txt');
+      if (!content) {
+        content = await window.api.readFile(state.projectDir, 'code.txt');
+      }
       if (content) {
         await window.api.writeClipboard(content);
-        showToast('code.txt copied to clipboard!', 'success');
+        showToast('Code copied to clipboard!', 'success');
+      } else {
+        showToast('No code baseline found. Click "1) Copy code.txt" first.', 'error');
       }
     }
   });
 
   elements.btnOpenCodeTxtLocation.addEventListener('click', async () => {
     if (state.projectDir) {
-      await window.api.showItem(`${state.projectDir}/code.txt`);
+      const baselineFile = `${state.projectDir}/.codebridge/baseline.txt`;
+      const codeTxtFile = `${state.projectDir}/code.txt`;
+      if (await window.api.readFile(state.projectDir, '.codebridge/baseline.txt')) {
+        await window.api.showItem(baselineFile);
+      } else if (await window.api.readFile(state.projectDir, 'code.txt')) {
+        await window.api.showItem(codeTxtFile);
+      } else {
+        await window.api.showItem(`${state.projectDir}/.codebridge`);
+      }
     }
   });
 
