@@ -19,16 +19,19 @@
     <!-- ============================================== -->
     <!-- LEFT SIDEBAR                                   -->
     <!-- ============================================== -->
-    <aside class="app-sidebar">
+    <aside class="app-sidebar" id="appSidebar">
       <!-- SIDEBAR BRAND -->
       <div class="sidebar-brand">
-        <div class="brand-logo">
+        <div class="brand-logo" title="CodeBridge AI">
           <i data-lucide="code-2" class="icon-lg"></i>
         </div>
         <div class="brand-text">
           <h1 class="brand-title">CodeBridge <span class="badge-ai">AI Sync</span></h1>
           <p class="brand-subtitle">Local File Alter & Sync</p>
         </div>
+        <button id="btnToggleSidebarCollapse" class="sidebar-collapse-btn" title="Toggle Sidebar (Ctrl+B)">
+          <i data-lucide="panel-left-close" id="sidebarCollapseIcon" class="icon-sm"></i>
+        </button>
       </div>
 
       <!-- ACTIVE PROJECT CARD -->
@@ -159,6 +162,9 @@
       <!-- TOP STATUS / BREADCRUMB BAR -->
       <div class="top-status-bar">
         <div class="status-left">
+          <button id="btnTopSidebarToggle" class="top-sidebar-btn" title="Toggle Sidebar (Ctrl+B)">
+            <i data-lucide="panel-left" class="icon-sm"></i>
+          </button>
           <i data-lucide="folder-check" class="icon-sm text-primary"></i>
           <span class="status-label">Project Root:</span>
           <span id="breadcrumbPath" class="status-path">No project loaded</span>
@@ -386,20 +392,25 @@ export default function Page() { ... }
         </div>
       </main>
 
-      <!-- TAB 3: CHANGES DIFF -->
+      <!-- TAB 3: CHANGES DIFF & CODE-EDITOR TREE -->
       <main id="tab-changes" class="tab-content">
-        <div class="single-panel-layout">
+        <div class="changes-layout">
+          <!-- TOP TOOLBAR -->
           <div class="toolbar-card">
             <div class="card-left">
               <h2 class="card-title">
                 <i data-lucide="git-pull-request" class="icon-md text-primary"></i>
-                Project Changes Since Last code.txt
+                Project Changes & Revert
               </h2>
-              <p class="card-desc">Detects all modified and newly created files compared to the baseline snapshot taken when code.txt was generated.</p>
+              <p class="card-desc">Compare current filesystem against baseline snapshot. Revert individual files or all changes with 1 click.</p>
             </div>
             <div class="card-actions">
-              <button id="btnRefreshChanges" class="btn btn-primary">
+              <button id="btnRevertAllChanges" class="btn btn-destructive-outline" title="Revert all modified, added, and deleted files back to baseline snapshot" disabled>
                 <i data-lucide="rotate-ccw" class="icon-sm"></i>
+                Revert All Changes
+              </button>
+              <button id="btnRefreshChanges" class="btn btn-primary" title="Scan disk for latest modifications">
+                <i data-lucide="refresh-cw" class="icon-sm"></i>
                 Check Changes Now
               </button>
               <button id="btnCopyChanges" class="btn btn-secondary" disabled>
@@ -413,19 +424,88 @@ export default function Page() { ... }
             </div>
           </div>
 
-          <div id="changesSummaryBanner" class="summary-banner neutral">
-            <div class="banner-text">
-              <span id="changesSummaryText" class="banner-title">Click "Check Changes Now" or "Export Changes"</span>
-              <span id="changesSubText" class="banner-desc">Baseline snapshot will be compared against current disk files</span>
+          <!-- SUMMARY STATS BANNER -->
+          <div class="changes-stats-bar">
+            <div class="changes-stat-pill total">
+              <span class="stat-pill-label">Total:</span>
+              <span id="changesTotalCount" class="stat-pill-val">0</span>
+            </div>
+            <div class="changes-stat-pill modified">
+              <span class="badge-letter">M</span>
+              <span class="stat-pill-label">Modified:</span>
+              <span id="changesModifiedCount" class="stat-pill-val">0</span>
+            </div>
+            <div class="changes-stat-pill added">
+              <span class="badge-letter">A</span>
+              <span class="stat-pill-label">New / Added:</span>
+              <span id="changesAddedCount" class="stat-pill-val">0</span>
+            </div>
+            <div class="changes-stat-pill deleted">
+              <span class="badge-letter">D</span>
+              <span class="stat-pill-label">Deleted:</span>
+              <span id="changesDeletedCount" class="stat-pill-val">0</span>
+            </div>
+            <div class="changes-baseline-info" id="changesBaselineInfo">
+              Baseline: No snapshot
             </div>
           </div>
 
-          <div class="viewer-container">
-            <div class="viewer-header">
-              <span>changes.txt Content</span>
-              <span id="changesViewerStats" class="viewer-badge">0 files</span>
+          <!-- 2-COLUMN CODE EDITOR CHANGES EXPLORER -->
+          <div class="changes-explorer-container">
+            <!-- LEFT COLUMN: CODE EDITOR TREE NAVIGATOR -->
+            <div class="changes-tree-sidebar">
+              <div class="tree-sidebar-header">
+                <div class="tree-sidebar-title">
+                  <i data-lucide="git-branch" class="icon-xs text-primary"></i>
+                  <span>Changed Files Tree</span>
+                </div>
+                <div class="tree-sidebar-tools">
+                  <button id="btnCollapseAllChangesTree" class="tree-tool-btn" title="Collapse All Folders">
+                    <i data-lucide="chevrons-down-up" class="icon-xs"></i>
+                  </button>
+                  <button id="btnExpandAllChangesTree" class="tree-tool-btn" title="Expand All Folders">
+                    <i data-lucide="chevrons-up-down" class="icon-xs"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="tree-filter-wrapper">
+                <i data-lucide="search" class="icon-xs tree-search-icon"></i>
+                <input type="text" id="txtFilterChangesTree" class="tree-search-input" placeholder="Filter changed files...">
+              </div>
+              <div id="changesTreeContainer" class="changes-tree-list">
+                <div class="tree-empty-state">
+                  <i data-lucide="check-circle-2" class="icon-xl text-muted"></i>
+                  <span>No changes detected</span>
+                </div>
+              </div>
             </div>
-            <pre id="changesViewer" class="code-preview-block">No changes generated yet.</pre>
+
+            <!-- RIGHT COLUMN: DIFF & CONTENT VIEWER -->
+            <div class="changes-diff-panel">
+              <div class="diff-panel-header">
+                <div class="diff-file-meta">
+                  <span id="diffActiveFileBadge" class="file-badge modified" style="display:none">MODIFIED</span>
+                  <span id="diffActiveFilePath" class="diff-file-path">Select a file from the tree</span>
+                </div>
+                <div class="diff-panel-actions">
+                  <div class="view-mode-switch">
+                    <button class="view-mode-btn active" data-mode="diff">Unified Diff</button>
+                    <button class="view-mode-btn" data-mode="current">Current File</button>
+                    <button class="view-mode-btn" data-mode="raw">Full changes.txt</button>
+                  </div>
+                  <button id="btnRevertSelectedFile" class="btn btn-sm btn-destructive-outline" title="Revert this file to baseline snapshot" style="display:none">
+                    <i data-lucide="undo-2" class="icon-xs"></i>
+                    Revert File
+                  </button>
+                </div>
+              </div>
+              <div id="changesDiffViewer" class="changes-diff-content">
+                <div class="diff-empty-state">
+                  <i data-lucide="file-diff" class="icon-2xl text-muted"></i>
+                  <p>Click on any changed file in the tree to view its diff</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -737,6 +817,7 @@ FILE:
 
   <!-- VENDOR SCRIPTS -->
   <script src="vendor/lucide.min.js"></script>
+  <script src="vendor/diff.min.js"></script>
   <script src="vendor/xterm.js"></script>
   <script src="vendor/addon-fit.js"></script>
   <script src="app.js"></script>

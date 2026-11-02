@@ -78,6 +78,22 @@
 
 ---
 
+### 6. Code Editor Changes Tree & Revert System
+- **VS Code Style Changes Tree**: Interactive file tree organizing modified, new, and deleted files by directory hierarchy.
+- **Status Badges**: `[M]` (Modified - amber), `[A]` (Added - green), `[D]` (Deleted - red).
+- **Interactive Unified Diff**: Line-by-line diff comparing current files against baseline `code.txt` snapshot with green additions, red deletions, and line numbers.
+- **Revert for Any Single File**: Click the undo button on any file in the Changes Tree or Session History to restore it to baseline.
+- **Revert All Changes**: 1-click restore all modified files from `code.txt` and clean newly created files.
+
+---
+
+### 7. Collapsible Sidebar
+- Smoothly toggles between full 320px sidebar and sleek 72px icon-only rail.
+- Tooltips on every action button and navigation tab when collapsed.
+- Keyboard shortcut: <kbd>Ctrl</kbd> + <kbd>B</kbd> toggles sidebar anytime.
+
+---
+
 ## How to Run
 
 ```bash

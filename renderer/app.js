@@ -24,7 +24,11 @@ const state = {
   terminalHeight: 260,
   applyErrors: [],
   selectedErrorFile: null,
-  terminalOutputHistory: ''
+  terminalOutputHistory: '',
+  sidebarCollapsed: false,
+  selectedChangeFile: null,
+  changeDiffViewMode: 'diff',
+  changesTreeFilter: ''
 };
 
 // Terminal Instance
@@ -38,6 +42,10 @@ const elements = {
   themeIcon: document.getElementById('themeIcon'),
   themeText: document.getElementById('themeText'),
   btnToggleTerminal: document.getElementById('btnToggleTerminal'),
+  appSidebar: document.getElementById('appSidebar'),
+  btnToggleSidebarCollapse: document.getElementById('btnToggleSidebarCollapse'),
+  sidebarCollapseIcon: document.getElementById('sidebarCollapseIcon'),
+  btnTopSidebarToggle: document.getElementById('btnTopSidebarToggle'),
 
   // Header & Project
   currentProjectPath: document.getElementById('currentProjectPath'),
@@ -89,15 +97,25 @@ const elements = {
   codeTxtViewer: document.getElementById('codeTxtViewer'),
   codeTxtViewerNotice: document.getElementById('codeTxtViewerNotice'),
 
-  // Tab 3: Changes
+  // Tab 3: Changes & Revert
   btnRefreshChanges: document.getElementById('btnRefreshChanges'),
   btnCopyChanges: document.getElementById('btnCopyChanges'),
   btnOpenChangesLocation: document.getElementById('btnOpenChangesLocation'),
-  changesSummaryBanner: document.getElementById('changesSummaryBanner'),
-  changesSummaryText: document.getElementById('changesSummaryText'),
-  changesSubText: document.getElementById('changesSubText'),
-  changesViewer: document.getElementById('changesViewer'),
-  changesViewerStats: document.getElementById('changesViewerStats'),
+  btnRevertAllChanges: document.getElementById('btnRevertAllChanges'),
+  btnRevertSelectedFile: document.getElementById('btnRevertSelectedFile'),
+  changesTotalCount: document.getElementById('changesTotalCount'),
+  changesModifiedCount: document.getElementById('changesModifiedCount'),
+  changesAddedCount: document.getElementById('changesAddedCount'),
+  changesDeletedCount: document.getElementById('changesDeletedCount'),
+  changesBaselineInfo: document.getElementById('changesBaselineInfo'),
+  btnCollapseAllChangesTree: document.getElementById('btnCollapseAllChangesTree'),
+  btnExpandAllChangesTree: document.getElementById('btnExpandAllChangesTree'),
+  txtFilterChangesTree: document.getElementById('txtFilterChangesTree'),
+  changesTreeContainer: document.getElementById('changesTreeContainer'),
+  diffActiveFileBadge: document.getElementById('diffActiveFileBadge'),
+  diffActiveFilePath: document.getElementById('diffActiveFilePath'),
+  changesDiffViewer: document.getElementById('changesDiffViewer'),
+  diffViewModeBtns: document.querySelectorAll('.view-mode-btn'),
 
   // Tab 4: Tree
   btnRefreshTree: document.getElementById('btnRefreshTree'),
@@ -965,11 +983,21 @@ function renderAppliedHistory() {
     <div class="history-item">
       <div style="display:flex;align-items:center;gap:8px">
         <span class="file-badge ${item.action.startsWith('patched') ? 'patch' : (item.action === 'created' ? 'new' : 'overwrite')}" style="font-size:10px">${item.action}</span>
-        <span class="history-item-path">${item.path}</span>
+        <span class="history-item-path">${escapeHtml(item.path)}</span>
       </div>
-      <span class="history-item-time">${item.timestamp}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="history-item-time">${item.timestamp}</span>
+        <button class="btn-text-sm text-destructive revert-history-btn" data-path="${item.path}" title="Revert this file to baseline snapshot">Revert</button>
+      </div>
     </div>
   `).join('');
+
+  container.querySelectorAll('.revert-history-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const p = e.currentTarget.getAttribute('data-path');
+      if (p) revertSingleFile(p);
+    });
+  });
 }
 
 // ==========================================
@@ -1074,29 +1102,35 @@ async function exportChanges(autoSwitchTab = true) {
       return;
     }
 
-    if (result.totalChanges === 0) {
-      const snapTime = new Date(result.snapshotTimestamp).toLocaleString();
-      elements.changesSummaryBanner.className = 'summary-banner no-changes';
-      elements.changesSummaryText.textContent = 'Codebase is up-to-date with baseline!';
-      elements.changesSubText.textContent = `No changes detected since code.txt was generated (${snapTime}).`;
-      elements.changesViewer.textContent = 'No modifications detected since last snapshot.';
-      elements.changesViewerStats.textContent = '0 files changed';
-      elements.btnCopyChanges.disabled = true;
-      elements.btnOpenChangesLocation.disabled = true;
+    // Update stats bar
+    elements.changesTotalCount.textContent = result.totalChanges;
+    elements.changesModifiedCount.textContent = result.modified.length;
+    elements.changesAddedCount.textContent = result.added.length;
+    elements.changesDeletedCount.textContent = result.removed.length;
 
-      showToast('No changes detected since last code.txt was generated.', 'info');
-    } else {
-      await window.api.writeClipboard(result.changesText);
+    const snapTime = new Date(result.snapshotTimestamp).toLocaleTimeString();
+    elements.changesBaselineInfo.textContent = `Baseline Snapshot: ${snapTime}`;
 
-      elements.changesSummaryBanner.className = 'summary-banner has-changes';
-      elements.changesSummaryText.textContent = `${result.totalChanges} changed file(s) detected!`;
-      elements.changesSubText.textContent = `${result.modified.length} modified, ${result.added.length} new, ${result.removed.length} deleted. Formatted & copied to clipboard!`;
-      elements.changesViewer.textContent = result.changesText;
-      elements.changesViewerStats.textContent = `${result.totalChanges} files (~${result.tokenEstimate} tokens)`;
+    elements.changesCountBadge.textContent = result.totalChanges;
+    if (result.totalChanges > 0) {
+      elements.changesCountBadge.className = 'badge-counter has-changes';
+      elements.btnRevertAllChanges.disabled = false;
       elements.btnCopyChanges.disabled = false;
       elements.btnOpenChangesLocation.disabled = false;
+    } else {
+      elements.changesCountBadge.className = 'badge-counter';
+      elements.btnRevertAllChanges.disabled = true;
+      elements.btnCopyChanges.disabled = true;
+      elements.btnOpenChangesLocation.disabled = true;
+    }
 
-      showToast(`Changes exported & copied to clipboard! (${result.totalChanges} files)`, 'success');
+    renderChangesTree();
+
+    if (result.totalChanges > 0) {
+      await window.api.writeClipboard(result.changesText);
+      showToast(`Changes loaded & copied to clipboard! (${result.totalChanges} files)`, 'success');
+    } else {
+      showToast('No changes detected since last code.txt was generated.', 'info');
     }
 
     if (autoSwitchTab) {
@@ -1109,6 +1143,415 @@ async function exportChanges(autoSwitchTab = true) {
     elements.btnExportChanges.style.opacity = '1';
     refreshIcons();
   }
+}
+
+// ==========================================
+// CODE EDITOR CHANGES TREE & DIFF EXPLORER
+// ==========================================
+
+function buildChangesHierarchy(filesList) {
+  const root = { name: '', isDir: true, children: {}, files: [] };
+
+  filesList.forEach(fileItem => {
+    const parts = fileItem.path.split('/');
+    let current = root;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!current.children[part]) {
+        current.children[part] = { name: part, isDir: true, children: {}, files: [] };
+      }
+      current = current.children[part];
+    }
+
+    current.files.push(fileItem);
+  });
+
+  return root;
+}
+
+function renderChangesTree() {
+  const container = elements.changesTreeContainer;
+  if (!container) return;
+
+  const res = state.currentChanges;
+  if (!res || res.totalChanges === 0) {
+    container.innerHTML = `
+      <div class="tree-empty-state">
+        <i data-lucide="check-circle-2" class="icon-xl text-muted"></i>
+        <span>No changes detected since baseline snapshot</span>
+      </div>
+    `;
+    elements.changesDiffViewer.innerHTML = `
+      <div class="diff-empty-state">
+        <i data-lucide="check-circle-2" class="icon-2xl text-primary"></i>
+        <p>All files are in sync with code.txt baseline!</p>
+      </div>
+    `;
+    elements.diffActiveFilePath.textContent = 'All clean (0 changes)';
+    elements.diffActiveFileBadge.style.display = 'none';
+    elements.btnRevertSelectedFile.style.display = 'none';
+    refreshIcons();
+    return;
+  }
+
+  let allChangedFiles = [];
+  if (res.modified) res.modified.forEach(f => allChangedFiles.push({ ...f, status: 'modified' }));
+  if (res.added) res.added.forEach(f => allChangedFiles.push({ ...f, status: 'added' }));
+  if (res.removed) res.removed.forEach(f => allChangedFiles.push({ ...f, status: 'deleted' }));
+
+  if (state.changesTreeFilter) {
+    const q = state.changesTreeFilter.toLowerCase();
+    allChangedFiles = allChangedFiles.filter(f => f.path.toLowerCase().includes(q));
+  }
+
+  if (allChangedFiles.length === 0) {
+    container.innerHTML = `
+      <div class="tree-empty-state">
+        <i data-lucide="filter" class="icon-xl text-muted"></i>
+        <span>No changed files match "${escapeHtml(state.changesTreeFilter)}"</span>
+      </div>
+    `;
+    refreshIcons();
+    return;
+  }
+
+  const rootNode = buildChangesHierarchy(allChangedFiles);
+  container.innerHTML = '';
+
+  function renderNode(node, parentEl) {
+    Object.keys(node.children).sort().forEach(folderName => {
+      const folder = node.children[folderName];
+      const folderDiv = document.createElement('div');
+      folderDiv.className = 'tree-folder-node';
+      folderDiv.innerHTML = `
+        <div class="tree-folder-header">
+          <i data-lucide="chevron-down" class="icon-xs tree-folder-icon"></i>
+          <i data-lucide="folder" class="icon-xs text-primary"></i>
+          <span>${escapeHtml(folder.name)}</span>
+        </div>
+        <div class="tree-folder-children"></div>
+      `;
+
+      const header = folderDiv.querySelector('.tree-folder-header');
+      header.addEventListener('click', () => {
+        folderDiv.classList.toggle('collapsed');
+      });
+
+      const childrenContainer = folderDiv.querySelector('.tree-folder-children');
+      renderNode(folder, childrenContainer);
+      parentEl.appendChild(folderDiv);
+    });
+
+    node.files.sort((a, b) => a.path.localeCompare(b.path)).forEach(fileItem => {
+      const fileName = fileItem.path.split('/').pop();
+      const fileDiv = document.createElement('div');
+      const isSelected = state.selectedChangeFile && state.selectedChangeFile.path === fileItem.path;
+      fileDiv.className = `tree-file-node ${isSelected ? 'active' : ''}`;
+      fileDiv.setAttribute('data-path', fileItem.path);
+
+      let badgeLetter = 'M';
+      let badgeClass = 'modified';
+      if (fileItem.status === 'added') {
+        badgeLetter = 'A';
+        badgeClass = 'added';
+      } else if (fileItem.status === 'deleted') {
+        badgeLetter = 'D';
+        badgeClass = 'deleted';
+      }
+
+      fileDiv.innerHTML = `
+        <span class="tree-file-status-badge ${badgeClass}">${badgeLetter}</span>
+        <span class="tree-file-name" title="${fileItem.path}">${escapeHtml(fileName)}</span>
+        <button class="tree-revert-btn" title="Revert ${escapeHtml(fileName)} to baseline" data-path="${fileItem.path}">
+          <i data-lucide="undo-2" class="icon-xs"></i>
+        </button>
+      `;
+
+      fileDiv.addEventListener('click', (e) => {
+        if (e.target.closest('.tree-revert-btn')) return;
+        selectChangeFile(fileItem);
+      });
+
+      const revertBtn = fileDiv.querySelector('.tree-revert-btn');
+      if (revertBtn) {
+        revertBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          revertSingleFile(fileItem.path);
+        });
+      }
+
+      parentEl.appendChild(fileDiv);
+    });
+  }
+
+  renderNode(rootNode, container);
+  refreshIcons();
+
+  if (!state.selectedChangeFile || !allChangedFiles.some(f => f.path === state.selectedChangeFile.path)) {
+    if (allChangedFiles.length > 0) {
+      selectChangeFile(allChangedFiles[0]);
+    }
+  } else {
+    const currentItem = allChangedFiles.find(f => f.path === state.selectedChangeFile.path);
+    if (currentItem) selectChangeFile(currentItem);
+  }
+}
+
+function selectChangeFile(fileItem) {
+  state.selectedChangeFile = fileItem;
+
+  document.querySelectorAll('.tree-file-node').forEach(el => {
+    if (el.getAttribute('data-path') === fileItem.path) {
+      el.classList.add('active');
+    } else {
+      el.classList.remove('active');
+    }
+  });
+
+  elements.diffActiveFilePath.textContent = fileItem.path;
+  elements.diffActiveFilePath.title = fileItem.path;
+
+  let badgeText = 'MODIFIED';
+  let badgeClass = 'modified';
+  if (fileItem.status === 'added') {
+    badgeText = 'NEW FILE';
+    badgeClass = 'new';
+  } else if (fileItem.status === 'deleted') {
+    badgeText = 'DELETED';
+    badgeClass = 'overwrite';
+  }
+
+  elements.diffActiveFileBadge.textContent = badgeText;
+  elements.diffActiveFileBadge.className = `file-badge ${badgeClass}`;
+  elements.diffActiveFileBadge.style.display = 'inline-block';
+
+  elements.btnRevertSelectedFile.style.display = 'inline-flex';
+  elements.btnRevertSelectedFile.disabled = false;
+  elements.btnRevertSelectedFile.setAttribute('data-path', fileItem.path);
+
+  renderDiffContent(fileItem);
+}
+
+function renderDiffContent(fileItem) {
+  const container = elements.changesDiffViewer;
+  if (!container || !fileItem) return;
+
+  const mode = state.changeDiffViewMode;
+
+  if (mode === 'raw') {
+    const raw = state.currentChanges ? state.currentChanges.changesText : 'No changes generated yet.';
+    container.innerHTML = `<pre class="code-preview-block" style="height:100%;padding:16px;">${escapeHtml(raw)}</pre>`;
+    return;
+  }
+
+  if (mode === 'current') {
+    const current = fileItem.content || '(File is deleted or empty)';
+    const lines = current.split('\n');
+    let html = '';
+    lines.forEach((line, idx) => {
+      html += `<div class="diff-line"><span class="diff-line-num">${idx + 1}</span><span class="diff-line-code">${escapeHtml(line)}</span></div>`;
+    });
+    container.innerHTML = html;
+    return;
+  }
+
+  const baseline = fileItem.baselineContent || '';
+  const current = fileItem.content || '';
+
+  if (typeof Diff !== 'undefined' && Diff.createPatch) {
+    try {
+      const patch = Diff.createPatch(fileItem.path, baseline, current, 'baseline', 'current');
+      const lines = patch.split('\n');
+      let html = '';
+      let lineNumOld = 0;
+      let lineNumNew = 0;
+
+      lines.forEach(line => {
+        if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('Index:') || line.startsWith('===')) {
+          return;
+        }
+
+        if (line.startsWith('@@')) {
+          html += `<div class="diff-line line-hunk"><span class="diff-line-num">...</span><span class="diff-line-code">${escapeHtml(line)}</span></div>`;
+          return;
+        }
+
+        if (line.startsWith('+')) {
+          lineNumNew++;
+          html += `<div class="diff-line line-add"><span class="diff-line-num">+</span><span class="diff-line-code">${escapeHtml(line.slice(1))}</span></div>`;
+        } else if (line.startsWith('-')) {
+          lineNumOld++;
+          html += `<div class="diff-line line-del"><span class="diff-line-num">-</span><span class="diff-line-code">${escapeHtml(line.slice(1))}</span></div>`;
+        } else {
+          lineNumOld++;
+          lineNumNew++;
+          html += `<div class="diff-line line-ctx"><span class="diff-line-num">${lineNumNew}</span><span class="diff-line-code">${escapeHtml(line.slice(1))}</span></div>`;
+        }
+      });
+
+      if (!html) {
+        html = `<div class="diff-empty-state"><i data-lucide="check" class="icon-xl text-primary"></i><span>No content difference detected</span></div>`;
+      }
+      container.innerHTML = html;
+      refreshIcons();
+      return;
+    } catch (e) {
+      console.warn('Diff error:', e);
+    }
+  }
+
+  const curLines = current.split('\n');
+  let html = '';
+  curLines.forEach((l, idx) => {
+    html += `<div class="diff-line line-ctx"><span class="diff-line-num">${idx + 1}</span><span class="diff-line-code">${escapeHtml(l)}</span></div>`;
+  });
+  container.innerHTML = html;
+}
+
+// ==========================================
+// REVERT FUNCTIONS (ALL OR SOME FILES)
+// ==========================================
+
+async function revertSingleFile(relPath) {
+  if (!state.projectDir) return;
+
+  const confirmRevert = confirm(`Are you sure you want to revert "${relPath}" to baseline snapshot?\n\nAny uncommitted changes in this file will be lost.`);
+  if (!confirmRevert) return;
+
+  try {
+    const res = await window.api.revertFile(state.projectDir, relPath);
+    if (res.success) {
+      showToast(`✓ Reverted ${relPath} (${res.action})`, 'success');
+      await exportChanges(false);
+      await checkPendingChanges();
+    } else {
+      showToast(`Failed to revert: ${res.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Error reverting file: ${err.message}`, 'error');
+  }
+}
+
+async function revertAllChanges() {
+  if (!state.projectDir) return;
+  if (!state.currentChanges || state.currentChanges.totalChanges === 0) {
+    showToast('No changes to revert.', 'info');
+    return;
+  }
+
+  const count = state.currentChanges.totalChanges;
+  const confirmRevert = confirm(`⚠️ Are you sure you want to REVERT ALL ${count} changed files back to baseline snapshot?\n\nAll modified files will be restored from code.txt and new files will be removed.`);
+  if (!confirmRevert) return;
+
+  try {
+    elements.btnRevertAllChanges.disabled = true;
+    elements.btnRevertAllChanges.textContent = 'Reverting...';
+
+    const res = await window.api.revertAll(state.projectDir);
+    if (res.success) {
+      showToast(`✓ Reverted ${res.revertedCount} files back to baseline snapshot!`, 'success');
+      await exportChanges(false);
+      await checkPendingChanges();
+    } else {
+      showToast(`Failed to revert all: ${res.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    elements.btnRevertAllChanges.disabled = false;
+    elements.btnRevertAllChanges.innerHTML = `
+      <i data-lucide="rotate-ccw" class="icon-sm"></i>
+      Revert All Changes
+    `;
+    refreshIcons();
+  }
+}
+
+// ==========================================
+// COLLAPSIBLE SIDEBAR TOGGLE
+// ==========================================
+
+function toggleSidebarCollapse(forceState = null) {
+  const sidebar = elements.appSidebar;
+  if (!sidebar) return;
+
+  const willCollapse = forceState !== null ? forceState : !sidebar.classList.contains('collapsed');
+
+  if (willCollapse) {
+    sidebar.classList.add('collapsed');
+    state.sidebarCollapsed = true;
+    if (elements.sidebarCollapseIcon) {
+      elements.sidebarCollapseIcon.setAttribute('data-lucide', 'panel-left-open');
+    }
+  } else {
+    sidebar.classList.remove('collapsed');
+    state.sidebarCollapsed = false;
+    if (elements.sidebarCollapseIcon) {
+      elements.sidebarCollapseIcon.setAttribute('data-lucide', 'panel-left-close');
+    }
+  }
+
+  refreshIcons();
+  setTimeout(resizeTerminal, 250);
+}
+
+// ==========================================
+// PROJECT MANAGEMENT & RECENT DROPDOWN
+// ==========================================
+
+async function switchProject(projectPath) {
+  if (!projectPath) return;
+  state.projectDir = projectPath;
+  elements.currentProjectPath.textContent = projectPath;
+  elements.currentProjectPath.title = projectPath;
+  elements.breadcrumbPath.textContent = projectPath;
+
+  try {
+    const info = await window.api.getProjectInfo(projectPath);
+    state.projectInfo = info;
+
+    if (info.shadcnAlias) {
+      elements.statusShadcnText.textContent = `Shadcn (${info.shadcnAlias})`;
+    } else {
+      elements.statusShadcnText.textContent = 'No Shadcn UI';
+    }
+
+    if (info.hasSnapshot) {
+      const timeStr = new Date(info.snapshotTimestamp).toLocaleTimeString();
+      elements.statusSnapshotText.textContent = `${info.snapshotFileCount} files (${timeStr})`;
+      elements.codeTxtStatusDesc.textContent = `${info.snapshotFileCount} files (${timeStr})`;
+    } else {
+      elements.statusSnapshotText.textContent = 'No snapshot';
+      elements.codeTxtStatusDesc.textContent = 'Excludes .md, shadcn, node_modules';
+    }
+
+    const recent = state.config.recentProjects || [];
+    if (!recent.includes(projectPath)) {
+      recent.unshift(projectPath);
+    }
+    state.config.lastProjectDir = projectPath;
+    state.config.recentProjects = recent.slice(0, 10);
+    await window.api.setConfig({ lastProjectDir: projectPath, recentProjects: state.config.recentProjects });
+
+    updateRecentProjectsDropdown();
+    await checkPendingChanges();
+  } catch (err) {
+    console.error('Error switching project:', err);
+  }
+}
+
+function updateRecentProjectsDropdown() {
+  const select = elements.recentProjectsSelect;
+  if (!select) return;
+  select.innerHTML = '<option value="">Recent Projects</option>';
+  (state.config.recentProjects || []).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p.split('/').pop() + ' (' + p + ')';
+    if (p === state.projectDir) opt.selected = true;
+    select.appendChild(opt);
+  });
 }
 
 // ==========================================
@@ -1777,15 +2220,27 @@ function bindEvents() {
   // Theme Toggle
   elements.btnThemeToggle.addEventListener('click', toggleTheme);
 
+  // Sidebar Collapse Toggle
+  if (elements.btnToggleSidebarCollapse) {
+    elements.btnToggleSidebarCollapse.addEventListener('click', () => toggleSidebarCollapse());
+  }
+  if (elements.btnTopSidebarToggle) {
+    elements.btnTopSidebarToggle.addEventListener('click', () => toggleSidebarCollapse());
+  }
+
   // Terminal Toggle
   elements.btnToggleTerminal.addEventListener('click', () => toggleTerminalDrawer());
   elements.btnMinimizeTerminal.addEventListener('click', () => toggleTerminalDrawer(false));
 
-  // Global Keyboard Shortcut: Ctrl + ` (backtick) toggles terminal
+  // Global Keyboard Shortcuts: Ctrl+` (terminal), Ctrl+B (sidebar)
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === '`') {
       e.preventDefault();
       toggleTerminalDrawer();
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      toggleSidebarCollapse();
     }
   });
 
@@ -1925,8 +2380,52 @@ function bindEvents() {
     }
   });
 
-  // Tab 3: Changes
+  // Tab 3: Changes & Code-Editor Tree
   elements.btnRefreshChanges.addEventListener('click', () => exportChanges(false));
+
+  if (elements.btnRevertAllChanges) {
+    elements.btnRevertAllChanges.addEventListener('click', revertAllChanges);
+  }
+
+  if (elements.btnRevertSelectedFile) {
+    elements.btnRevertSelectedFile.addEventListener('click', () => {
+      if (state.selectedChangeFile) {
+        revertSingleFile(state.selectedChangeFile.path);
+      }
+    });
+  }
+
+  if (elements.btnCollapseAllChangesTree) {
+    elements.btnCollapseAllChangesTree.addEventListener('click', () => {
+      document.querySelectorAll('#changesTreeContainer .tree-folder-node').forEach(f => f.classList.add('collapsed'));
+    });
+  }
+
+  if (elements.btnExpandAllChangesTree) {
+    elements.btnExpandAllChangesTree.addEventListener('click', () => {
+      document.querySelectorAll('#changesTreeContainer .tree-folder-node').forEach(f => f.classList.remove('collapsed'));
+    });
+  }
+
+  if (elements.txtFilterChangesTree) {
+    elements.txtFilterChangesTree.addEventListener('input', (e) => {
+      state.changesTreeFilter = e.target.value.trim();
+      renderChangesTree();
+    });
+  }
+
+  if (elements.diffViewModeBtns) {
+    elements.diffViewModeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        elements.diffViewModeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.changeDiffViewMode = btn.getAttribute('data-mode');
+        if (state.selectedChangeFile) {
+          renderDiffContent(state.selectedChangeFile);
+        }
+      });
+    });
+  }
 
   elements.btnCopyChanges.addEventListener('click', async () => {
     if (state.currentChanges && state.currentChanges.changesText) {
@@ -2060,6 +2559,41 @@ function bindEvents() {
       applyFixAndMergeBothAction(state.selectedErrorFile, elements.fixAssistantInput.value);
     });
   }
+}
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+async function init() {
+  bindEvents();
+  initTerminal();
+  setupTerminalResizer();
+
+  try {
+    const config = await window.api.getConfig();
+    if (config) {
+      state.config = { ...state.config, ...config };
+      if (config.theme) {
+        applyTheme(config.theme);
+      }
+      if (config.sidebarCollapsed) {
+        toggleSidebarCollapse(true);
+      }
+      if (config.ignoreMd !== undefined && elements.chkIgnoreMd) elements.chkIgnoreMd.checked = config.ignoreMd;
+      if (config.ignoreShadcn !== undefined && elements.chkIgnoreShadcn) elements.chkIgnoreShadcn.checked = config.ignoreShadcn;
+      if (config.ignoreNodeModules !== undefined && elements.chkIgnoreNodeModules) elements.chkIgnoreNodeModules.checked = config.ignoreNodeModules;
+      if (config.customIgnore !== undefined && elements.txtCustomIgnore) elements.txtCustomIgnore.value = config.customIgnore;
+
+      if (config.lastProjectDir) {
+        await switchProject(config.lastProjectDir);
+      }
+    }
+  } catch (err) {
+    console.error('Config load error:', err);
+  }
+
+  updatePromptPreview();
+  refreshIcons();
 }
 
 // Start app

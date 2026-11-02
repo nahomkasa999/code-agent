@@ -515,6 +515,23 @@ ipcMain.handle('project:generateCodeTxt', async (event, projectDir, options = {}
   };
 });
 
+function getBaselineContent(projectDir, relPath) {
+  const codeTxtPath = path.join(projectDir, 'code.txt');
+  if (!fs.existsSync(codeTxtPath)) return null;
+
+  try {
+    const content = fs.readFileSync(codeTxtPath, 'utf8');
+    const normRel = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const escapedRel = normRel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`={5,}\\s*\\r?\\n(?:FILE:\\s*)?(?:[ \\t]*\\r?\\n)?${escapedRel}\\s*\\r?\\n={5,}\\s*\\r?\\n([\\s\\S]*?)(?=(?:={5,}\\s*\\r?\\n(?:FILE:\\s*)?(?:[ \\t]*\\r?\\n)?[^\\r\\n=]+?\\s*\\r?\\n={5,})|$)`, 'i');
+    const match = content.match(regex);
+    if (match) {
+      return match[1].replace(/^\r?\n/, '').replace(/\r?\n\s*$/, '\n');
+    }
+  } catch (e) {}
+  return null;
+}
+
 // ==========================================
 // BUTTON 2: Detect & Export Changes
 // ==========================================
@@ -557,9 +574,22 @@ ipcMain.handle('project:getChanges', async (event, projectDir, options = {}) => 
       const currentHash = crypto.createHash('sha256').update(content).digest('hex');
 
       if (!snapshot.files[relPath]) {
-        added.push({ path: relPath, content, size: content.length });
+        added.push({
+          path: relPath,
+          content,
+          baselineContent: '',
+          size: content.length,
+          status: 'added'
+        });
       } else if (snapshot.files[relPath].hash !== currentHash) {
-        modified.push({ path: relPath, content, size: content.length });
+        const baseline = getBaselineContent(projectDir, relPath);
+        modified.push({
+          path: relPath,
+          content,
+          baselineContent: baseline !== null ? baseline : '',
+          size: content.length,
+          status: 'modified'
+        });
       }
     } catch (e) {}
   }
@@ -567,7 +597,12 @@ ipcMain.handle('project:getChanges', async (event, projectDir, options = {}) => 
   // Check for deleted files
   for (const snapPath of Object.keys(snapshot.files)) {
     if (!currentFileSet.has(snapPath)) {
-      removed.push(snapPath);
+      const baseline = getBaselineContent(projectDir, snapPath);
+      removed.push({
+        path: snapPath,
+        baselineContent: baseline !== null ? baseline : '',
+        status: 'deleted'
+      });
     }
   }
 
@@ -588,7 +623,7 @@ ipcMain.handle('project:getChanges', async (event, projectDir, options = {}) => 
     if (removed.length > 0) {
       changesText += `--- DELETED FILES ---\n`;
       removed.forEach(f => {
-        changesText += `- ${f}\n`;
+        changesText += `- ${f.path || f}\n`;
       });
       changesText += `\n`;
     }
@@ -624,6 +659,107 @@ ipcMain.handle('project:getChanges', async (event, projectDir, options = {}) => 
     changesText,
     charCount: changesText.length,
     tokenEstimate: Math.round(changesText.length / 4)
+  };
+});
+
+// Revert single file back to baseline or delete if added
+ipcMain.handle('project:revertFile', async (event, projectDir, relPath) => {
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    throw new Error('Project directory does not exist: ' + projectDir);
+  }
+
+  const cleanRel = relPath.trim().replace(/^[\/\\]+/, '');
+  const fullPath = path.resolve(projectDir, cleanRel);
+  if (!fullPath.startsWith(path.resolve(projectDir))) {
+    throw new Error('Invalid path outside project root');
+  }
+
+  const baseline = getBaselineContent(projectDir, cleanRel);
+
+  if (baseline !== null) {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, baseline, 'utf8');
+    return { success: true, action: 'restored', path: cleanRel };
+  } else {
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      return { success: true, action: 'deleted', path: cleanRel };
+    }
+    return { success: false, error: 'File was not found in baseline snapshot' };
+  }
+});
+
+// Revert all changes back to baseline
+ipcMain.handle('project:revertAll', async (event, projectDir) => {
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    throw new Error('Project directory does not exist: ' + projectDir);
+  }
+
+  const codeTxtPath = path.join(projectDir, 'code.txt');
+  if (!fs.existsSync(codeTxtPath)) {
+    throw new Error('No baseline code.txt found to revert from. Create code.txt first.');
+  }
+
+  const snapshotPath = getSnapshotPath(projectDir);
+  if (!fs.existsSync(snapshotPath)) {
+    throw new Error('No baseline snapshot found. Create code.txt first.');
+  }
+
+  const shadcnAlias = detectShadcnPath(projectDir);
+  const currentFiles = scanProjectFiles(projectDir, '', {}, shadcnAlias);
+  const currentFileSet = new Set(currentFiles);
+  const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
+
+  let revertedCount = 0;
+  const revertedFiles = [];
+
+  // 1. Delete newly added files
+  for (const relPath of currentFiles) {
+    if (!snapshot.files[relPath]) {
+      const fullPath = path.join(projectDir, relPath);
+      try {
+        fs.unlinkSync(fullPath);
+        revertedCount++;
+        revertedFiles.push({ path: relPath, action: 'deleted' });
+      } catch (e) {}
+    }
+  }
+
+  // 2. Restore modified files and deleted files
+  for (const [snapPath, snapInfo] of Object.entries(snapshot.files)) {
+    const fullPath = path.join(projectDir, snapPath);
+    const baseline = getBaselineContent(projectDir, snapPath);
+    if (baseline === null) continue;
+
+    let needsRestore = false;
+    if (!fs.existsSync(fullPath)) {
+      needsRestore = true;
+    } else {
+      const currentContent = fs.readFileSync(fullPath, 'utf8');
+      const currentHash = crypto.createHash('sha256').update(currentContent).digest('hex');
+      if (currentHash !== snapInfo.hash) {
+        needsRestore = true;
+      }
+    }
+
+    if (needsRestore) {
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, baseline, 'utf8');
+      revertedCount++;
+      revertedFiles.push({ path: snapPath, action: 'restored' });
+    }
+  }
+
+  // Clear changes.txt
+  const changesPath = path.join(projectDir, 'changes.txt');
+  if (fs.existsSync(changesPath)) {
+    try { fs.unlinkSync(changesPath); } catch (e) {}
+  }
+
+  return {
+    success: true,
+    revertedCount,
+    revertedFiles
   };
 });
 

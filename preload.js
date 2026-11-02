@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   checkFileStatuses: (projectDir, relPaths) => ipcRenderer.invoke('project:checkFileStatuses', projectDir, relPaths),
   generateCodeTxt: (projectDir, options) => ipcRenderer.invoke('project:generateCodeTxt', projectDir, options),
   getChanges: (projectDir, options) => ipcRenderer.invoke('project:getChanges', projectDir, options),
+  revertFile: (projectDir, relPath) => ipcRenderer.invoke('project:revertFile', projectDir, relPath),
+  revertAll: (projectDir) => ipcRenderer.invoke('project:revertAll', projectDir),
   generateTree: (projectDir, options) => ipcRenderer.invoke('project:generateTree', projectDir, options),
   applyFiles: (projectDir, files) => ipcRenderer.invoke('project:applyFiles', projectDir, files),
   readFile: (projectDir, relPath) => ipcRenderer.invoke('project:readFile', projectDir, relPath),
