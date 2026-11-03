@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('api', {
   getChanges: (projectDir, options) => ipcRenderer.invoke('project:getChanges', projectDir, options),
   revertFile: (projectDir, relPath) => ipcRenderer.invoke('project:revertFile', projectDir, relPath),
   revertAll: (projectDir) => ipcRenderer.invoke('project:revertAll', projectDir),
+  unrevertAll: (projectDir) => ipcRenderer.invoke('project:unrevertAll', projectDir),
+  hasUnrevert: (projectDir) => ipcRenderer.invoke('project:hasUnrevert', projectDir),
   generateTree: (projectDir, options) => ipcRenderer.invoke('project:generateTree', projectDir, options),
   applyFiles: (projectDir, files) => ipcRenderer.invoke('project:applyFiles', projectDir, files),
   readFile: (projectDir, relPath) => ipcRenderer.invoke('project:readFile', projectDir, relPath),

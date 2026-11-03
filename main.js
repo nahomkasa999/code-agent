@@ -689,6 +689,10 @@ ipcMain.handle('project:getChanges', async (event, projectDir, options = {}) => 
   };
 });
 
+function getUnrevertPath(projectDir) {
+  return path.join(projectDir, '.codebridge', 'unrevert_backup.json');
+}
+
 // Revert single file back to baseline or delete if added
 ipcMain.handle('project:revertFile', async (event, projectDir, relPath) => {
   if (!projectDir || !fs.existsSync(projectDir)) {
@@ -699,6 +703,32 @@ ipcMain.handle('project:revertFile', async (event, projectDir, relPath) => {
   const fullPath = path.resolve(projectDir, cleanRel);
   if (!fullPath.startsWith(path.resolve(projectDir))) {
     throw new Error('Invalid path outside project root');
+  }
+
+  // Backup file before reverting so it can be un-reverted
+  try {
+    const backupFiles = [];
+    if (fs.existsSync(fullPath)) {
+      backupFiles.push({
+        path: cleanRel,
+        existed: true,
+        content: fs.readFileSync(fullPath, 'utf8')
+      });
+    } else {
+      backupFiles.push({
+        path: cleanRel,
+        existed: false
+      });
+    }
+    const unrevertData = {
+      timestamp: Date.now(),
+      source: 'revertFile',
+      files: backupFiles
+    };
+    fs.mkdirSync(path.join(projectDir, '.codebridge'), { recursive: true });
+    fs.writeFileSync(getUnrevertPath(projectDir), JSON.stringify(unrevertData, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('Failed to save pre-revert backup for single file:', err);
   }
 
   const baseline = getBaselineContent(projectDir, cleanRel);
@@ -737,6 +767,60 @@ ipcMain.handle('project:revertAll', async (event, projectDir) => {
   const currentFiles = scanProjectFiles(projectDir, '', {}, shadcnAlias);
   const currentFileSet = new Set(currentFiles);
   const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
+
+  // Backup all files before reverting so they can be un-reverted
+  const preRevertBackup = [];
+  for (const relPath of currentFiles) {
+    if (!snapshot.files[relPath]) {
+      const fullPath = path.join(projectDir, relPath);
+      try {
+        preRevertBackup.push({
+          path: relPath,
+          existed: true,
+          content: fs.readFileSync(fullPath, 'utf8')
+        });
+      } catch (e) {}
+    }
+  }
+
+  for (const [snapPath, snapInfo] of Object.entries(snapshot.files)) {
+    const fullPath = path.join(projectDir, snapPath);
+    const baseline = getBaselineContent(projectDir, snapPath);
+    if (baseline === null) continue;
+
+    if (!fs.existsSync(fullPath)) {
+      preRevertBackup.push({
+        path: snapPath,
+        existed: false
+      });
+    } else {
+      try {
+        const currentContent = fs.readFileSync(fullPath, 'utf8');
+        const currentHash = crypto.createHash('sha256').update(currentContent).digest('hex');
+        if (currentHash !== snapInfo.hash) {
+          preRevertBackup.push({
+            path: snapPath,
+            existed: true,
+            content: currentContent
+          });
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (preRevertBackup.length > 0) {
+    try {
+      const unrevertData = {
+        timestamp: Date.now(),
+        source: 'revertAll',
+        files: preRevertBackup
+      };
+      fs.mkdirSync(path.join(projectDir, '.codebridge'), { recursive: true });
+      fs.writeFileSync(getUnrevertPath(projectDir), JSON.stringify(unrevertData, null, 2), 'utf8');
+    } catch (err) {
+      console.warn('Failed to save pre-revert backup for revertAll:', err);
+    }
+  }
 
   let revertedCount = 0;
   const revertedFiles = [];
@@ -788,6 +872,72 @@ ipcMain.handle('project:revertAll', async (event, projectDir) => {
     success: true,
     revertedCount,
     revertedFiles
+  };
+});
+
+// Check if pre-revert backup exists to un-revert
+ipcMain.handle('project:hasUnrevert', async (event, projectDir) => {
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    return { hasUnrevert: false };
+  }
+  const unrevertPath = getUnrevertPath(projectDir);
+  if (!fs.existsSync(unrevertPath)) {
+    return { hasUnrevert: false };
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(unrevertPath, 'utf8'));
+    return {
+      hasUnrevert: true,
+      timestamp: data.timestamp,
+      source: data.source,
+      fileCount: (data.files || []).length
+    };
+  } catch (e) {
+    return { hasUnrevert: false };
+  }
+});
+
+// Restore files from pre-revert backup (Un-revert / Redo changes)
+ipcMain.handle('project:unrevertAll', async (event, projectDir) => {
+  if (!projectDir || !fs.existsSync(projectDir)) {
+    throw new Error('Project directory does not exist: ' + projectDir);
+  }
+  const unrevertPath = getUnrevertPath(projectDir);
+  if (!fs.existsSync(unrevertPath)) {
+    throw new Error('No pre-revert backup found. Nothing to un-revert.');
+  }
+
+  const data = JSON.parse(fs.readFileSync(unrevertPath, 'utf8'));
+  const files = data.files || [];
+  let restoredCount = 0;
+
+  for (const item of files) {
+    const cleanRel = (item.path || '').trim().replace(/^[\/\\]+/, '');
+    const fullPath = path.resolve(projectDir, cleanRel);
+    if (!fullPath.startsWith(path.resolve(projectDir))) continue;
+
+    if (item.existed) {
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, item.content != null ? item.content : '', 'utf8');
+      restoredCount++;
+    } else {
+      if (fs.existsSync(fullPath)) {
+        try {
+          fs.unlinkSync(fullPath);
+          restoredCount++;
+        } catch (e) {}
+      }
+    }
+  }
+
+  // Remove the unrevert backup file after successful un-revert
+  try {
+    fs.unlinkSync(unrevertPath);
+  } catch (e) {}
+
+  return {
+    success: true,
+    restoredCount
   };
 });
 

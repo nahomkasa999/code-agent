@@ -102,6 +102,7 @@ const elements = {
   btnCopyChanges: document.getElementById('btnCopyChanges'),
   btnOpenChangesLocation: document.getElementById('btnOpenChangesLocation'),
   btnRevertAllChanges: document.getElementById('btnRevertAllChanges'),
+  btnUndoRevert: document.getElementById('btnUndoRevert'),
   btnRevertSelectedFile: document.getElementById('btnRevertSelectedFile'),
   changesTotalCount: document.getElementById('changesTotalCount'),
   changesModifiedCount: document.getElementById('changesModifiedCount'),
@@ -850,7 +851,7 @@ function renderParsedFiles() {
           </button>
           <button class="btn btn-sm btn-primary apply-single-btn" data-index="${index}">
             <i data-lucide="check" class="icon-xs"></i>
-            <span>${file.isPatch ? 'Apply Patch' : 'Apply'}</span>
+            <span>${file.isPatch ? 'Patch' : 'Apply'}</span>
           </button>
         </div>
       </div>
@@ -966,7 +967,7 @@ async function applyFiles(filesToApply) {
     elements.btnApplyAllFiles.disabled = false;
     elements.btnApplyAllFiles.innerHTML = `
       <i data-lucide="check-check" class="icon-md"></i>
-      Apply All Files to Disk (<span id="applyCountNumber">${state.parsedFiles.length}</span>)
+      <span>Apply (<span id="applyCountNumber">${state.parsedFiles.length}</span>)</span>
     `;
     refreshIcons();
   }
@@ -1038,7 +1039,9 @@ async function generateCodeTxt() {
 
     // Update Header Status
     const timeStr = new Date(result.timestamp).toLocaleTimeString();
-    elements.codeTxtStatusDesc.textContent = `${result.fileCount} files (${timeStr})`;
+    if (elements.codeTxtStatusDesc) {
+      elements.codeTxtStatusDesc.textContent = `${result.fileCount} files (${timeStr})`;
+    }
     elements.statusSnapshotText.textContent = `${result.fileCount} files (${timeStr})`;
 
     // Reset Changes Badge to 0
@@ -1054,7 +1057,7 @@ async function generateCodeTxt() {
     elements.btnTriggerCodeTxtGen.disabled = false;
     elements.btnTriggerCodeTxtGen.innerHTML = `
       <i data-lucide="refresh-cw" class="icon-sm"></i>
-      Re-generate & Copy
+      <span>Regenerate</span>
     `;
     refreshIcons();
   }
@@ -1136,6 +1139,8 @@ async function exportChanges(autoSwitchTab = true) {
     } else {
       showToast('No changes detected since baseline snapshot was generated.', 'info');
     }
+
+    await checkUnrevertStatus();
 
     if (autoSwitchTab) {
       switchTab('tab-changes');
@@ -1414,13 +1419,60 @@ function renderDiffContent(fileItem) {
 }
 
 // ==========================================
-// REVERT FUNCTIONS (ALL OR SOME FILES)
+// REVERT & UNREVERT FUNCTIONS
 // ==========================================
+
+async function checkUnrevertStatus() {
+  if (!elements.btnUndoRevert || !state.projectDir) return;
+  try {
+    const res = await window.api.hasUnrevert(state.projectDir);
+    if (res && res.hasUnrevert) {
+      elements.btnUndoRevert.disabled = false;
+      elements.btnUndoRevert.title = `Undo revert: restore ${res.fileCount} file(s) back to pre-revert state`;
+    } else {
+      elements.btnUndoRevert.disabled = true;
+      elements.btnUndoRevert.title = 'No pre-revert backup available';
+    }
+  } catch (e) {
+    elements.btnUndoRevert.disabled = true;
+  }
+}
+
+async function unrevertChanges() {
+  if (!state.projectDir) {
+    showToast('Please select a project first.', 'warning');
+    return;
+  }
+
+  try {
+    elements.btnUndoRevert.disabled = true;
+    elements.btnUndoRevert.textContent = 'Restoring...';
+
+    const res = await window.api.unrevertAll(state.projectDir);
+    if (res.success) {
+      showToast(`✓ Un-reverted! Restored ${res.restoredCount} file(s) back to pre-revert state.`, 'success');
+      await exportChanges(false);
+      await checkPendingChanges();
+    } else {
+      showToast(`Failed to un-revert: ${res.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    elements.btnUndoRevert.disabled = false;
+    elements.btnUndoRevert.innerHTML = `
+      <i data-lucide="rotate-cw" class="icon-sm"></i>
+      <span>Unrevert</span>
+    `;
+    refreshIcons();
+    await checkUnrevertStatus();
+  }
+}
 
 async function revertSingleFile(relPath) {
   if (!state.projectDir) return;
 
-  const confirmRevert = confirm(`Are you sure you want to revert "${relPath}" to baseline snapshot?\n\nAny uncommitted changes in this file will be lost.`);
+  const confirmRevert = confirm(`Are you sure you want to revert "${relPath}" to baseline snapshot?\n\nAny uncommitted changes in this file will be saved and can be un-reverted.`);
   if (!confirmRevert) return;
 
   try {
@@ -1429,6 +1481,7 @@ async function revertSingleFile(relPath) {
       showToast(`✓ Reverted ${relPath} (${res.action})`, 'success');
       await exportChanges(false);
       await checkPendingChanges();
+      await checkUnrevertStatus();
     } else {
       showToast(`Failed to revert: ${res.error || 'Unknown error'}`, 'error');
     }
@@ -1445,7 +1498,7 @@ async function revertAllChanges() {
   }
 
   const count = state.currentChanges.totalChanges;
-  const confirmRevert = confirm(`⚠️ Are you sure you want to REVERT ALL ${count} changed files back to baseline snapshot?\n\nAll modified files will be restored from baseline snapshot and new files will be removed.`);
+  const confirmRevert = confirm(`⚠️ Are you sure you want to REVERT ALL ${count} changed files back to baseline snapshot?\n\nAll pre-revert changes will be backed up so you can click "Unrevert" anytime.`);
   if (!confirmRevert) return;
 
   try {
@@ -1457,6 +1510,7 @@ async function revertAllChanges() {
       showToast(`✓ Reverted ${res.revertedCount} files back to baseline snapshot!`, 'success');
       await exportChanges(false);
       await checkPendingChanges();
+      await checkUnrevertStatus();
     } else {
       showToast(`Failed to revert all: ${res.error || 'Unknown error'}`, 'error');
     }
@@ -1466,7 +1520,7 @@ async function revertAllChanges() {
     elements.btnRevertAllChanges.disabled = false;
     elements.btnRevertAllChanges.innerHTML = `
       <i data-lucide="rotate-ccw" class="icon-sm"></i>
-      Revert All Changes
+      <span>Revert</span>
     `;
     refreshIcons();
   }
@@ -1524,10 +1578,10 @@ async function switchProject(projectPath) {
     if (info.hasSnapshot) {
       const timeStr = new Date(info.snapshotTimestamp).toLocaleTimeString();
       elements.statusSnapshotText.textContent = `${info.snapshotFileCount} files (${timeStr})`;
-      elements.codeTxtStatusDesc.textContent = `${info.snapshotFileCount} files (${timeStr})`;
+      if (elements.codeTxtStatusDesc) elements.codeTxtStatusDesc.textContent = `${info.snapshotFileCount} files (${timeStr})`;
     } else {
       elements.statusSnapshotText.textContent = 'No snapshot';
-      elements.codeTxtStatusDesc.textContent = 'Excludes .md, shadcn, node_modules';
+      if (elements.codeTxtStatusDesc) elements.codeTxtStatusDesc.textContent = 'Excludes .md, shadcn, node_modules';
     }
 
     const recent = state.config.recentProjects || [];
@@ -1540,6 +1594,7 @@ async function switchProject(projectPath) {
 
     updateRecentProjectsDropdown();
     await checkPendingChanges();
+    await checkUnrevertStatus();
   } catch (err) {
     console.error('Error switching project:', err);
   }
@@ -1876,9 +1931,9 @@ function handleApplyErrors(errors) {
       <div class="error-alert-item">
         <div class="error-item-top">
           <span class="error-item-path">${escapeHtml(err.path || 'Unknown')}</span>
-          <button class="btn-destructive-outline open-fix-btn" data-index="${idx}">
+          <button class="btn-destructive-outline open-fix-btn" data-index="${idx}" title="Fix in Assistant">
             <i data-lucide="wrench" class="icon-xs"></i>
-            <span>Fix in Assistant</span>
+            <span>Fix</span>
           </button>
         </div>
         <div class="error-item-reason">${escapeHtml(err.error || 'Failed to apply changes')}</div>
@@ -2475,6 +2530,10 @@ function bindEvents() {
 
   if (elements.btnRevertAllChanges) {
     elements.btnRevertAllChanges.addEventListener('click', revertAllChanges);
+  }
+
+  if (elements.btnUndoRevert) {
+    elements.btnUndoRevert.addEventListener('click', unrevertChanges);
   }
 
   if (elements.btnRevertSelectedFile) {

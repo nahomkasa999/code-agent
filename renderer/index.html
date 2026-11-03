@@ -43,7 +43,7 @@
           </div>
           <button id="btnBrowseFolder" class="btn btn-secondary btn-sm" title="Change Project Folder">
             <i data-lucide="folder-search" class="icon-xs"></i>
-            Browse...
+            <span>Browse</span>
           </button>
         </div>
         <div class="project-path-display" id="currentProjectPath" title="Click to reveal in folder">
@@ -59,50 +59,47 @@
       <!-- CORE ACTION BUTTONS (1, 2, 3, 4) -->
       <div class="sidebar-section-title">Workflow Actions</div>
       <div class="core-actions-vertical">
-        <!-- BUTTON 1: Copy code.txt -->
-        <button id="btnCreateCodeTxt" class="action-btn">
+        <!-- BUTTON 1: Code -->
+        <button id="btnCreateCodeTxt" class="action-btn" title="Copy code.txt">
           <div class="btn-icon">
             <i data-lucide="file-code-2" class="icon-md"></i>
           </div>
           <div class="btn-text-content">
-            <span class="btn-primary-title">1) Copy code.txt</span>
-            <span class="btn-secondary-desc" id="codeTxtStatusDesc">Excludes .md, shadcn, node_modules</span>
+            <span class="btn-primary-title">1) Code</span>
           </div>
+          <span id="codeTxtStatusDesc" style="display:none"></span>
         </button>
 
-        <!-- BUTTON 2: Export Changes -->
-        <button id="btnExportChanges" class="action-btn">
+        <!-- BUTTON 2: Changes -->
+        <button id="btnExportChanges" class="action-btn" title="Export Changes">
           <div class="btn-icon">
             <i data-lucide="git-commit-horizontal" class="icon-md"></i>
           </div>
           <div class="btn-text-content">
             <div class="title-with-badge">
-              <span class="btn-primary-title">2) Export Changes</span>
+              <span class="btn-primary-title">2) Changes</span>
               <span id="changesCountBadge" class="badge-counter">0</span>
             </div>
-            <span class="btn-secondary-desc">Since last code.txt</span>
           </div>
         </button>
 
-        <!-- BUTTON 3: Project Tree -->
-        <button id="btnGenerateTree" class="action-btn">
+        <!-- BUTTON 3: Tree -->
+        <button id="btnGenerateTree" class="action-btn" title="Tree View">
           <div class="btn-icon">
             <i data-lucide="folder-tree" class="icon-md"></i>
           </div>
           <div class="btn-text-content">
-            <span class="btn-primary-title">3) Tree View</span>
-            <span class="btn-secondary-desc">Copy project structure</span>
+            <span class="btn-primary-title">3) Tree</span>
           </div>
         </button>
 
-        <!-- BUTTON 4: Copy AI Prompt -->
-        <button id="btnCopyPrompt" class="action-btn">
+        <!-- BUTTON 4: Prompt -->
+        <button id="btnCopyPrompt" class="action-btn" title="Copy AI Prompt">
           <div class="btn-icon">
             <i data-lucide="sparkles" class="icon-md"></i>
           </div>
           <div class="btn-text-content">
-            <span class="btn-primary-title">4) Copy AI Prompt</span>
-            <span class="btn-secondary-desc">Instruct AI on format</span>
+            <span class="btn-primary-title">4) Prompt</span>
           </div>
         </button>
       </div>
@@ -190,22 +187,21 @@
               <div class="panel-title-group">
                 <h2 class="panel-title">
                   <i data-lucide="clipboard-copy" class="icon-sm text-primary"></i>
-                  Paste AI Output Here
+                  Paste AI Output
                 </h2>
-                <span class="panel-hint">Supports delimiters (=== FILE: path ===) or markdown code blocks</span>
               </div>
               <div class="panel-tools">
                 <button id="btnAutoFormat" class="btn btn-secondary" title="Auto-detect & format unstructured text into standard file delimiters">
                   <i data-lucide="wand-2" class="icon-sm text-primary"></i>
-                  Auto-Format & Clean
+                  <span>Format</span>
                 </button>
-                <button id="btnPasteClipboard" class="btn btn-secondary">
+                <button id="btnPasteClipboard" class="btn btn-secondary" title="Paste clipboard content">
                   <i data-lucide="clipboard-paste" class="icon-sm"></i>
-                  Paste Clipboard
+                  <span>Paste</span>
                 </button>
-                <button id="btnClearPaste" class="btn btn-outline">
+                <button id="btnClearPaste" class="btn btn-outline" title="Clear paste input">
                   <i data-lucide="trash-2" class="icon-sm"></i>
-                  Clear
+                  <span>Clear</span>
                 </button>
               </div>
             </div>
@@ -232,7 +228,7 @@ export default function Page() { ... }
               </div>
               <button id="btnApplyAllFiles" class="btn btn-primary btn-apply-all" disabled>
                 <i data-lucide="check-check" class="icon-md"></i>
-                Apply All Files to Disk (<span id="applyCountNumber">0</span>)
+                <span>Apply (<span id="applyCountNumber">0</span>)</span>
               </button>
             </div>
           </div>
@@ -243,9 +239,8 @@ export default function Page() { ... }
               <div class="panel-title-group">
                 <h2 class="panel-title">
                   <i data-lucide="files" class="icon-sm text-primary"></i>
-                  Detected Files & Patches (<span id="detectedFilesCount">0</span>)
+                  Detected Files (<span id="detectedFilesCount">0</span>)
                 </h2>
-                <span class="panel-hint">Review changes before altering your local files</span>
               </div>
             </div>
 
@@ -254,16 +249,16 @@ export default function Page() { ... }
               <div class="error-alert-header">
                 <div class="error-alert-title">
                   <i data-lucide="alert-triangle" class="icon-sm text-destructive"></i>
-                  <span>Errors Encountered (<span id="pasteErrorCount">0</span> failed)</span>
+                  <span>Errors (<span id="pasteErrorCount">0</span> failed)</span>
                 </div>
                 <div class="error-alert-actions">
                   <button id="btnCopyQuickErrorPrompt" class="btn btn-sm btn-destructive-outline" title="Copy targeted AI prompt to fix only these errors">
                     <i data-lucide="sparkles" class="icon-xs"></i>
-                    Copy Error Prompt for AI
+                    <span>Copy</span>
                   </button>
                   <button id="btnOpenFullErrorTab" class="btn btn-sm btn-secondary" title="Open full Error & Fix Assistant tab">
                     <i data-lucide="external-link" class="icon-xs"></i>
-                    Open Assistant
+                    <span>Assistant</span>
                   </button>
                   <button id="btnDismissQuickError" class="btn-text-sm" title="Dismiss error alert">Dismiss</button>
                 </div>
@@ -276,17 +271,17 @@ export default function Page() { ... }
                 </div>
                 <textarea id="quickFixInput" class="quick-fix-textarea" placeholder="Paste the AI's fix patch or corrected file here..."></textarea>
                 <div class="quick-fix-button-row">
-                  <button id="btnQuickApplyFixDisk" class="btn btn-sm btn-secondary">
+                  <button id="btnQuickApplyFixDisk" class="btn btn-sm btn-secondary" title="Apply fix to disk">
                     <i data-lucide="hard-drive-download" class="icon-xs"></i>
-                    Apply Fix to Disk
+                    <span>Apply</span>
                   </button>
-                  <button id="btnQuickMergeFixOriginal" class="btn btn-sm btn-accent">
+                  <button id="btnQuickMergeFixOriginal" class="btn btn-sm btn-accent" title="Merge fix into original pasted code">
                     <i data-lucide="git-merge" class="icon-xs"></i>
-                    Merge into Original Pasted
+                    <span>Merge</span>
                   </button>
-                  <button id="btnQuickApplyAndMerge" class="btn btn-sm btn-primary">
+                  <button id="btnQuickApplyAndMerge" class="btn btn-sm btn-primary" title="Apply to disk and merge both">
                     <i data-lucide="zap" class="icon-xs"></i>
-                    Apply to Disk & Merge Both
+                    <span>Both</span>
                   </button>
                 </div>
               </div>
@@ -297,11 +292,11 @@ export default function Page() { ... }
               <div class="commands-box-header">
                 <div class="commands-box-title">
                   <i data-lucide="terminal" class="icon-sm text-primary"></i>
-                  <span>Detected Commands (<span id="detectedCommandsCount">0</span>)</span>
+                  <span>Commands (<span id="detectedCommandsCount">0</span>)</span>
                 </div>
-                <button id="btnRunAllCommands" class="btn btn-primary btn-sm">
+                <button id="btnRunAllCommands" class="btn btn-primary btn-sm" title="Run all in terminal">
                   <i data-lucide="play" class="icon-xs"></i>
-                  Run All in Terminal
+                  <span>Run</span>
                 </button>
               </div>
               <div id="detectedCommandsList" class="commands-list"></div>
@@ -322,7 +317,7 @@ export default function Page() { ... }
                   <i data-lucide="history" class="icon-xs"></i>
                   Session Applied History
                 </span>
-                <button id="btnClearHistory" class="btn-text-sm">Clear</button>
+                <button id="btnClearHistory" class="btn-text-sm" title="Clear history">Clear</button>
               </div>
               <div id="appliedHistoryList" class="history-list">
                 <div class="history-empty">No files applied in this session yet.</div>
@@ -341,20 +336,19 @@ export default function Page() { ... }
                 <i data-lucide="file-code" class="icon-md text-primary"></i>
                 Full Code Aggregator (code.txt)
               </h2>
-              <p class="card-desc">Combines all project code and copies directly to clipboard for AI consumption without creating files on disk.</p>
             </div>
             <div class="card-actions">
-              <button id="btnTriggerCodeTxtGen" class="btn btn-primary">
+              <button id="btnTriggerCodeTxtGen" class="btn btn-primary" title="Re-generate and copy code.txt">
                 <i data-lucide="refresh-cw" class="icon-sm"></i>
-                Re-generate & Copy
+                <span>Regenerate</span>
               </button>
-              <button id="btnCopyCodeTxt" class="btn btn-secondary" disabled>
+              <button id="btnCopyCodeTxt" class="btn btn-secondary" title="Copy code.txt to clipboard" disabled>
                 <i data-lucide="copy" class="icon-sm"></i>
-                Copy to Clipboard
+                <span>Copy</span>
               </button>
-              <button id="btnOpenCodeTxtLocation" class="btn btn-outline" disabled>
+              <button id="btnOpenCodeTxtLocation" class="btn btn-outline" title="Open snapshot folder" disabled>
                 <i data-lucide="external-link" class="icon-sm"></i>
-                Open Snapshot Folder
+                <span>Open</span>
               </button>
             </div>
           </div>
@@ -402,24 +396,27 @@ export default function Page() { ... }
                 <i data-lucide="git-pull-request" class="icon-md text-primary"></i>
                 Project Changes & Revert
               </h2>
-              <p class="card-desc">Compare current filesystem against baseline snapshot. Revert individual files or all changes with 1 click.</p>
             </div>
             <div class="card-actions">
               <button id="btnRevertAllChanges" class="btn btn-destructive-outline" title="Revert all modified, added, and deleted files back to baseline snapshot" disabled>
                 <i data-lucide="rotate-ccw" class="icon-sm"></i>
-                Revert All Changes
+                <span>Revert</span>
+              </button>
+              <button id="btnUndoRevert" class="btn btn-secondary" title="Undo the last revert and restore your changes" disabled>
+                <i data-lucide="rotate-cw" class="icon-sm"></i>
+                <span>Unrevert</span>
               </button>
               <button id="btnRefreshChanges" class="btn btn-primary" title="Scan disk for latest modifications">
                 <i data-lucide="refresh-cw" class="icon-sm"></i>
-                Check Changes Now
+                <span>Check</span>
               </button>
-              <button id="btnCopyChanges" class="btn btn-secondary" disabled>
+              <button id="btnCopyChanges" class="btn btn-secondary" title="Copy changes.txt to clipboard" disabled>
                 <i data-lucide="copy" class="icon-sm"></i>
-                Copy changes.txt
+                <span>Copy</span>
               </button>
-              <button id="btnOpenChangesLocation" class="btn btn-outline" disabled>
+              <button id="btnOpenChangesLocation" class="btn btn-outline" title="Open in folder" disabled>
                 <i data-lucide="external-link" class="icon-sm"></i>
-                Open in Folder
+                <span>Open</span>
               </button>
             </div>
           </div>
@@ -489,13 +486,13 @@ export default function Page() { ... }
                 </div>
                 <div class="diff-panel-actions">
                   <div class="view-mode-switch">
-                    <button class="view-mode-btn active" data-mode="diff">Unified Diff</button>
-                    <button class="view-mode-btn" data-mode="current">Current File</button>
-                    <button class="view-mode-btn" data-mode="raw">Full changes.txt</button>
+                    <button class="view-mode-btn active" data-mode="diff">Diff</button>
+                    <button class="view-mode-btn" data-mode="current">Current</button>
+                    <button class="view-mode-btn" data-mode="raw">Raw</button>
                   </div>
                   <button id="btnRevertSelectedFile" class="btn btn-sm btn-destructive-outline" title="Revert this file to baseline snapshot" style="display:none">
                     <i data-lucide="undo-2" class="icon-xs"></i>
-                    Revert File
+                    <span>Revert</span>
                   </button>
                 </div>
               </div>
@@ -519,16 +516,15 @@ export default function Page() { ... }
                 <i data-lucide="folder-tree" class="icon-md text-primary"></i>
                 Project Directory Tree
               </h2>
-              <p class="card-desc">Clean ASCII tree representation of your project folder. Filtered to exclude node_modules, .git, and compacts shadcn UI.</p>
             </div>
             <div class="card-actions">
-              <button id="btnRefreshTree" class="btn btn-primary">
+              <button id="btnRefreshTree" class="btn btn-primary" title="Generate project directory tree">
                 <i data-lucide="refresh-cw" class="icon-sm"></i>
-                Generate Tree
+                <span>Generate</span>
               </button>
-              <button id="btnCopyTree" class="btn btn-secondary">
+              <button id="btnCopyTree" class="btn btn-secondary" title="Copy tree to clipboard">
                 <i data-lucide="copy" class="icon-sm"></i>
-                Copy Tree to Clipboard
+                <span>Copy</span>
               </button>
             </div>
           </div>
@@ -567,12 +563,11 @@ export default function Page() { ... }
                 <i data-lucide="sparkle" class="icon-md text-primary"></i>
                 AI System Prompt Instructions
               </h2>
-              <p class="card-desc">Copy this prompt and send it to your AI (Claude, ChatGPT, Gemini, DeepSeek, etc.) so it always formats code exactly as this app expects.</p>
             </div>
             <div class="card-actions">
-              <button id="btnCopyPromptInTab" class="btn btn-primary">
+              <button id="btnCopyPromptInTab" class="btn btn-primary" title="Copy prompt to clipboard">
                 <i data-lucide="copy" class="icon-sm"></i>
-                Copy Prompt to Clipboard
+                <span>Copy</span>
               </button>
             </div>
           </div>
@@ -609,7 +604,6 @@ export default function Page() { ... }
               <i data-lucide="filter" class="icon-sm text-primary"></i>
               Exclusion & Ignore Settings
             </h3>
-            <p class="settings-desc">Configure what files and folders are excluded when creating <code>code.txt</code> and tracking changes:</p>
             <div class="settings-checkboxes">
               <label class="checkbox-label">
                 <input type="checkbox" id="chkIgnoreMd" checked>
@@ -642,22 +636,19 @@ export default function Page() { ... }
                 <i data-lucide="shield-alert" class="icon-md text-destructive"></i>
                 AI Error Diagnostic & Patch Fix Assistant
               </h2>
-              <p class="card-desc">
-                When code alterations, patches, or terminal commands fail, generate a targeted prompt for your AI with full disk context, and paste the AI patch here to repair both disk files and your original pasted code.
-              </p>
             </div>
             <div class="card-actions">
               <button id="btnCopyFullErrorPrompt" class="btn btn-primary" title="Copy complete error prompt with file context to clipboard">
                 <i data-lucide="sparkles" class="icon-sm"></i>
-                Copy Error Fix Prompt for AI
+                <span>Copy</span>
               </button>
               <button id="btnLoadFromTerminal" class="btn btn-secondary" title="Import recent error lines from terminal output">
                 <i data-lucide="terminal" class="icon-sm"></i>
-                Pull from Terminal
+                <span>Pull</span>
               </button>
-              <button id="btnClearErrorFixer" class="btn btn-outline">
+              <button id="btnClearErrorFixer" class="btn btn-outline" title="Clear inputs">
                 <i data-lucide="trash-2" class="icon-sm"></i>
-                Clear
+                <span>Clear</span>
               </button>
             </div>
           </div>
@@ -672,7 +663,6 @@ export default function Page() { ... }
                     <i data-lucide="bug" class="icon-sm text-destructive"></i>
                     1. Error Output & Target Context
                   </h3>
-                  <span class="panel-hint">Select the failing file and inspect error details</span>
                 </div>
               </div>
               <div class="assistant-col-body">
@@ -704,12 +694,11 @@ export default function Page() { ... }
                     <i data-lucide="wrench" class="icon-sm text-primary"></i>
                     2. Paste AI Fix Patch
                   </h3>
-                  <span class="panel-hint">Paste the AI's fix to patch disk and original pasted code</span>
                 </div>
                 <div class="panel-tools">
                   <button id="btnFormatAssistantFix" class="btn btn-sm btn-secondary" title="Format fix delimiters">
                     <i data-lucide="wand-2" class="icon-xs"></i>
-                    Auto-Format
+                    <span>Format</span>
                   </button>
                 </div>
               </div>
@@ -740,17 +729,17 @@ FILE:
                     Choose Resolution Action:
                   </div>
                   <div class="resolution-actions-grid">
-                    <button id="btnAssistantApplyDisk" class="btn btn-secondary">
+                    <button id="btnAssistantApplyDisk" class="btn btn-secondary" title="Apply fix directly to disk">
                       <i data-lucide="hard-drive-download" class="icon-sm"></i>
-                      <span>Apply Fix to Disk</span>
+                      <span>Apply</span>
                     </button>
-                    <button id="btnAssistantMergeOriginal" class="btn btn-accent">
+                    <button id="btnAssistantMergeOriginal" class="btn btn-accent" title="Merge fix into original pasted code">
                       <i data-lucide="git-merge" class="icon-sm"></i>
-                      <span>Merge into Original Pasted</span>
+                      <span>Merge</span>
                     </button>
-                    <button id="btnAssistantApplyBoth" class="btn btn-primary btn-full-span">
+                    <button id="btnAssistantApplyBoth" class="btn btn-primary btn-full-span" title="Apply to disk and merge both">
                       <i data-lucide="check-check" class="icon-md"></i>
-                      <span>Apply to Disk & Merge into Original (Both)</span>
+                      <span>Both</span>
                     </button>
                   </div>
                 </div>
@@ -784,23 +773,23 @@ FILE:
           <div class="terminal-controls">
             <button id="btnTermDev" class="terminal-quick-btn" title="Run npm run dev">
               <i data-lucide="play" class="icon-xs"></i>
-              npm run dev
+              <span>dev</span>
             </button>
             <button id="btnTermGit" class="terminal-quick-btn" title="Run git status">
               <i data-lucide="git-branch" class="icon-xs"></i>
-              git status
+              <span>git</span>
             </button>
             <button id="btnTermClear" class="terminal-quick-btn" title="Clear terminal">
               <i data-lucide="trash" class="icon-xs"></i>
-              clear
+              <span>clear</span>
             </button>
             <button id="btnTermRestart" class="terminal-quick-btn" title="Restart shell session">
               <i data-lucide="rotate-cw" class="icon-xs"></i>
-              restart
+              <span>restart</span>
             </button>
             <button id="btnTermSendError" class="terminal-quick-btn text-destructive" title="Send recent terminal error to Fix Assistant">
               <i data-lucide="alert-triangle" class="icon-xs"></i>
-              Fix Error
+              <span>fix</span>
             </button>
             <button id="btnMinimizeTerminal" class="terminal-icon-btn" title="Minimize / Toggle Terminal">
               <i data-lucide="minus" class="icon-sm"></i>
